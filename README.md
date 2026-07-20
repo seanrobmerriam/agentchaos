@@ -286,15 +286,15 @@ by `--reproducer`.
 
 ## Transports
 
-AgentChaos speaks MCP's two current standard transports:
+AgentChaos v1 supports stdio upstream:
 
 - **stdio** — the agent connects to the proxy via stdin/stdout; the proxy
   connects to the upstream server via stdin/stdout (subprocess).
-- **Streamable HTTP** — the proxy connects to an upstream HTTP server. SSE
-  reverse-channel supported via `HTTPOptions.ReverseGET`.
 
-In v1, the agent always speaks stdio to the proxy; the proxy speaks stdio or
-Streamable HTTP to the upstream.
+In v1, both sides always speak stdio. Streamable HTTP upstream transport is
+tracked in `SUGGESTED_FEATURES.md` §2 and will land in a follow-up. The
+`internal/proxy` package currently contains a non-fault-aware HTTP shuttle
+(`http_proxy.go`) retained for the upcoming transport-switch work.
 
 ## Architecture
 
