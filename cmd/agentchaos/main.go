@@ -40,6 +40,8 @@ func main() {
 		cmdLint(os.Args[2:])
 	case "explain":
 		cmdExplain(os.Args[2:])
+	case "risk":
+		cmdRisk(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
