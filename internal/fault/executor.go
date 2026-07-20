@@ -9,7 +9,9 @@ import (
 	"github.com/seanrobmerriam/agentchaos/internal/scenario"
 )
 
-// ExitFunc is the function called when kill_process fires. Defaults to os.Exit.
+// ExitFunc is the function called when kill_process fires. Defaults to a
+// no-op (var ExitProcess); callers that want a real exit (e.g. test
+// harnesses) inject their own.
 type ExitFunc func(int)
 
 // Transport describes the transport mode.
