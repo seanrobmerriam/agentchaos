@@ -274,7 +274,18 @@ func (s Scenario) Validate() error {
 	// a document without "seed:" leaves it as zero, which is ambiguous.
 	// For v1 we accept zero as a valid seed value.
 
+	// Canonical anchor set inlined to avoid an import cycle: fault already
+	// depends on scenario. Keep in sync with fault.ValidAnchors().
+	validAnchors := map[string]bool{
+		"before_request_send":  true,
+		"after_request_sent":   true,
+		"before_response":      true,
+		"at_notification_recv": true,
+	}
 	for i, f := range s.Faults {
+		if f.At != "" && !validAnchors[f.At] {
+			return fmt.Errorf("fault[%d]: invalid anchor %q (valid: before_request_send, after_request_sent, before_response, at_notification_recv)", i, f.At)
+		}
 		if !validActions[f.Action] {
 			return fmt.Errorf("fault[%d]: invalid action %q", i, f.Action)
 		}
