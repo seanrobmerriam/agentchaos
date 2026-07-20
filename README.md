@@ -1,10 +1,10 @@
 <img src="assets/agentchaos.png" alt="agentchaos-logo" width="1200" />   
 
-# AgentChaos
+# agentchaos
 
-> Transparent MCP fault-injection proxy for testing agent recovery logic.
+### Transparent MCP fault-injection proxy for testing agent recovery logic.
 
-AgentChaos sits between an agent runtime (the MCP client) and one or more
+agentchaos sits between an agent runtime (the MCP client) and one or more
 upstream MCP servers. It intercepts every JSON-RPC message crossing the wire
 and injects failures according to a declarative scenario: killing the process
 mid-tool-call, duplicating a notification, reordering concurrent tool
