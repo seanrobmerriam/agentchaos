@@ -24,9 +24,9 @@ not an exhaustive correctness proof. Specifically:
   in_doubt) at the JSON-RPC layer.
 - It does **not** cover network-level faults (packet loss, latency below the
   MCP message layer). Pair with `tc` or [Toxiproxy](https://github.com/Shopify/toxiproxy) for that.
-- It is **single-proxy, single-upstream-connection** in v1. Multi-node
-  distributed scenarios (faults coordinated across several proxies) are a
-  non-goal.
+- It is **single-proxy, single-upstream-connection** in the current version. Multi-node
+  distributed scenarios (faults coordinated across several proxies) will be a
+  future addition.
 - `corrupt_checkpoint` fidelity depends on knowing the target's on-disk
   format. The primitive is a generic "flip N bytes at offset X in file Y at
   time T" — format-awareness is left to the scenario author.
