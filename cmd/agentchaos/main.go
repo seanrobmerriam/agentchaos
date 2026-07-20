@@ -42,6 +42,8 @@ func main() {
 		cmdExplain(os.Args[2:])
 	case "risk":
 		cmdRisk(os.Args[2:])
+	case "fuzz":
+		cmdFuzz(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -57,7 +59,8 @@ Usage:
   agentchaos validate --scenario <path>
   agentchaos inspect  --scenario <path>
   agentchaos lint     --scenario <path>
-  agentchaos explain  --event-log <path>`)
+  agentchaos explain  --event-log <path>
+  agentchaos fuzz     --upstream <cmd> [--scenario <path>] [--runs N] [--max-faults N]`)
 }
 
 func cmdRun(args []string) {
