@@ -2,7 +2,6 @@ package fault
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"sync"
 
@@ -10,7 +9,9 @@ import (
 	"github.com/seanrobmerriam/agentchaos/internal/scenario"
 )
 
-// ExitFunc is the function called when kill_process fires. Defaults to os.Exit.
+// ExitFunc is the function called when kill_process fires. Defaults to a
+// no-op (var ExitProcess); callers that want a real exit (e.g. test
+// harnesses) inject their own.
 type ExitFunc func(int)
 
 // Transport describes the transport mode.
@@ -36,10 +37,10 @@ type ScheduleEntry struct {
 // Unlike the Phase 2 Pipeline (which only logs matches), the Executor
 // modifies, drops, duplicates, or terminates on matched messages.
 type Executor struct {
-	scenario *scenario.Scenario
-	exitFn   ExitFunc
+	scenario  *scenario.Scenario
+	exitFn    ExitFunc
 	transport Transport
-	prng     *splitMix64
+	prng      *splitMix64
 
 	mu sync.Mutex
 	// pendingInDoubt maps request id → true for requests whose responses
@@ -63,12 +64,12 @@ type Executor struct {
 // NewExecutor creates an executor for stdio transport (default).
 func NewExecutor(s *scenario.Scenario, exitFn ExitFunc) *Executor {
 	return &Executor{
-		scenario:        s,
-		exitFn:          exitFn,
-		transport:       TransportStdio,
-		prng:            newSplitMix64(uint64(s.Seed)),
-		pendingInDoubt:  make(map[int64]bool),
-		eventLog:        event.New(),
+		scenario:       s,
+		exitFn:         exitFn,
+		transport:      TransportStdio,
+		prng:           newSplitMix64(uint64(s.Seed)),
+		pendingInDoubt: make(map[int64]bool),
+		eventLog:       event.New(),
 	}
 }
 
@@ -76,12 +77,12 @@ func NewExecutor(s *scenario.Scenario, exitFn ExitFunc) *Executor {
 // Returns an error if a scenario uses reorder in stdio mode.
 func NewExecutorForTransport(s *scenario.Scenario, exitFn ExitFunc, transport Transport) (*Executor, error) {
 	ex := &Executor{
-		scenario:        s,
-		exitFn:          exitFn,
-		transport:       transport,
-		prng:            newSplitMix64(uint64(s.Seed)),
-		pendingInDoubt:  make(map[int64]bool),
-		eventLog:        event.New(),
+		scenario:       s,
+		exitFn:         exitFn,
+		transport:      transport,
+		prng:           newSplitMix64(uint64(s.Seed)),
+		pendingInDoubt: make(map[int64]bool),
+		eventLog:       event.New(),
 	}
 	if transport == TransportStdio {
 		for i, f := range s.Faults {
@@ -95,7 +96,21 @@ func NewExecutorForTransport(s *scenario.Scenario, exitFn ExitFunc, transport Tr
 
 // ProcessForward handles a message going agent->upstream.
 // Returns: messages to forward to upstream, and whether to kill the process.
+//
+// Lock-held: ex.mu is held for the entire body. All PRNG consumption,
+// schedule mutation, and pendingInDoubt updates must happen under this
+// mutex so that two pump goroutines (forward + reverse) running
+// concurrently produce a byte-identical fault schedule for a given seed.
 func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	return ex.processForwardLocked(msg, raw, dir)
+}
+
+// processForwardLocked contains the fault-injection logic for a forward
+// (agent->upstream) message. Caller MUST hold ex.mu; see ProcessForward
+// for the locking/scheduling invariants.
+func (ex *Executor) processForwardLocked(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	anchor := ex.deriveForwardAnchor(msg, dir)
 
 	// Record the request/notification in the event log.
@@ -103,7 +118,7 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 
 	for i := range ex.scenario.Faults {
 		f := &ex.scenario.Faults[i]
-		if !ex.shouldFire(i, f, msg, dir, anchor) {
+		if !ex.shouldFireLocked(i, f, msg, dir, anchor) {
 			continue
 		}
 
@@ -111,8 +126,14 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 		case "kill_process":
 			// Forward the request, then kill.
 			forward = append(forward, raw)
-			// Call the exit function (defaults to os.Exit; tests inject a
-			// recording function). The return signals kill to the caller.
+			// Signal-only: invoke exitFn(77) for callers that observe
+			// the kill via the injected hook (e.g. the unit test that
+			// records the code, or the CLI which composes a no-op).
+			// The package default ExitProcess is itself a no-op, so this
+			// never terminates the process. kill=true propagates to the
+			// pump which sets exitCode=77 on the runResult and returns;
+			// the goroutine unwinds normally so subprocess cleanup,
+			// assertion evaluation, and shrink feedback can run.
 			if ex.exitFn != nil {
 				ex.exitFn(77)
 			}
@@ -120,9 +141,7 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 
 		case "in_doubt":
 			// Mark this request id for response dropping.
-			ex.mu.Lock()
 			ex.pendingInDoubt[msg.ID] = true
-			ex.mu.Unlock()
 			// Forward the request normally.
 			forward = append(forward, raw)
 
@@ -134,9 +153,21 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 
 		case "corrupt_checkpoint":
 			// Flip bytes in the target file at the specified offset.
-			// Errors are non-fatal (the file might not exist yet).
+			// Errors are non-fatal (the file might not exist yet). When the
+			// read was shorter than requested (file shorter than offset+n),
+			// record a fault_fired event so callers/oracles can observe it.
 			if f.Path != "" && f.Bytes > 0 {
-				_ = corruptFile(f.Path, f.Offset, f.Bytes)
+				if res := corruptFile(f.Path, f.Offset, f.Bytes); res.Short {
+					ex.eventLog.Record(event.Event{
+						Kind:       event.KindFaultFired,
+						Action:     f.Action,
+						FaultIndex: i,
+						MsgID:      msg.ID,
+						Method:     msg.Method,
+						Tool:       msg.Tool,
+						Direction:  string(dir),
+					})
+				}
 			}
 			forward = append(forward, raw)
 
@@ -160,32 +191,41 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 // ProcessReverse handles a message going upstream->agent.
 // Returns: messages to forward to the agent (may be buffered, dropped, or
 // duplicated), and whether to kill the process.
+//
+// Lock-held: ex.mu is held for the entire body. The pendingInDoubt check,
+// droppedResponses append, eventLog.Record, schedule mutation, and PRNG
+// consumption all happen under this single lock acquisition so that the
+// in_doubt early-exit path and the schedule remain consistent across
+// concurrent forward/reverse pump goroutines.
 func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+	return ex.processReverseLocked(msg, raw, dir)
+}
+
+// processReverseLocked contains the fault-injection logic for a reverse
+// (upstream->agent) message. Caller MUST hold ex.mu; see ProcessReverse
+// for the locking/scheduling invariants.
+func (ex *Executor) processReverseLocked(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	anchor := ex.deriveReverseAnchor(msg, dir)
 
 	// Check in_doubt FIRST: if this response's id is pending, drop it.
-	ex.mu.Lock()
 	if msg.Kind == "response" && ex.pendingInDoubt[msg.ID] {
 		delete(ex.pendingInDoubt, msg.ID)
-		ex.mu.Unlock()
-		// Record the dropped response for the oracle.
-		ex.mu.Lock()
 		ex.droppedResponses = append(ex.droppedResponses, raw)
-		ex.mu.Unlock()
 		// Record event: response was dropped (oracle sees it, agent doesn't).
 		ex.eventLog.Record(event.Event{
 			Kind:      event.KindResponseDropped,
 			MsgID:     msg.ID,
-			Direction:  string(dir),
+			Direction: string(dir),
 			Raw:       raw,
 		})
 		return nil, false // dropped
 	}
-	ex.mu.Unlock()
 
 	for i := range ex.scenario.Faults {
 		f := &ex.scenario.Faults[i]
-		if !ex.shouldFire(i, f, msg, dir, anchor) {
+		if !ex.shouldFireLocked(i, f, msg, dir, anchor) {
 			continue
 		}
 
@@ -200,11 +240,26 @@ func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Directi
 			return out, false
 
 		case "reorder":
-			fwd, killed := ex.handleReorder(f, raw)
-			if len(fwd) > 0 {
-				ex.recordReverseDelivered(msg, dir, len(fwd))
+			// handleReorder is inlined here because it also acquires
+			// ex.mu and sync.Mutex is not reentrant. The lock is already
+			// held by the deferred Lock above.
+			window := f.Window
+			if window <= 0 {
+				window = 3
 			}
-			return fwd, killed
+			ex.reorderBuffer = append(ex.reorderBuffer, raw)
+			ex.reorderWindow = window
+
+			if len(ex.reorderBuffer) >= ex.reorderWindow {
+				buf := ex.reorderBuffer
+				ex.reorderBuffer = nil
+				fwd := permute(ex.prng, buf)
+				if len(fwd) > 0 {
+					ex.recordReverseDelivered(msg, dir, len(fwd))
+				}
+				return fwd, false
+			}
+			return nil, false // buffered, not yet released
 
 		case "in_doubt", "kill_process":
 			// These fire on the forward side; on reverse they're no-ops.
@@ -257,10 +312,16 @@ func (ex *Executor) EventLog() *event.Log {
 	return ex.eventLog
 }
 
-// shouldFire checks if a fault should fire for a given message+direction+anchor,
-// including the probability roll. The faultIndex is recorded in the schedule
-// when the fault fires.
-func (ex *Executor) shouldFire(faultIndex int, f *scenario.Fault, msg scenario.Message, dir Direction, anchor Anchor) bool {
+// shouldFireLocked checks if a fault should fire for a given
+// message+direction+anchor, including the probability roll. The
+// faultIndex is recorded in the schedule when the fault fires.
+//
+// Lock-held: callers MUST hold ex.mu for the duration of this call.
+// All PRNG consumption (ex.prng.Float64) and schedule mutation
+// (ex.schedule = append(...)) happen inside this method, so the mutex
+// must be held to serialize them. ProcessForward and ProcessReverse
+// acquire the mutex at entry and call shouldFireLocked under it.
+func (ex *Executor) shouldFireLocked(faultIndex int, f *scenario.Fault, msg scenario.Message, dir Direction, anchor Anchor) bool {
 	if !f.Match.Matches(msg) {
 		return false
 	}
@@ -397,8 +458,13 @@ func permute(prng *splitMix64, items [][]byte) [][]byte {
 	return out
 }
 
-// ExitProcess is the default exit function.
-var ExitProcess ExitFunc = func(code int) { os.Exit(code) }
+// ExitProcess is the package default exit function. It is a no-op so
+// that test binaries and embedding callers that pass fault.ExitProcess to
+// NewExecutor/NewExecutorForTransport can compile and run without
+// terminating the process from inside a goroutine. Production callers
+// (the agentchaos CLI) compose their own signal-only exit callback and
+// let pumpWithFaults translate kill=true into the runResult.exitCode.
+var ExitProcess ExitFunc = func(code int) { _ = code }
 
 // recordForwardEvent logs a request or notification being sent forward.
 func (ex *Executor) recordForwardEvent(msg scenario.Message, dir Direction) {
@@ -434,30 +500,54 @@ func (ex *Executor) recordReverseDelivered(msg scenario.Message, dir Direction, 
 	}
 }
 
-// corruptFile flips N bytes at the given offset in the file at path.
-// Uses XOR with 0xFF to flip each byte, which is a simple corruption that
-// changes the value without zeroing it. Errors are returned but the caller
-// (the executor) treats them as non-fatal — the file might not exist.
-func corruptFile(path string, offset int64, n int) error {
+// corruptResult reports the outcome of a corruptFile call. Short is true
+// when ReadAt returned fewer bytes than Requested; in that case Corrupted
+// reports only the bytes actually flipped and Error stays nil unless the
+// underlying I/O itself failed.
+type corruptResult struct {
+	Requested int
+	Corrupted int
+	Short     bool
+	Error     error
+}
+
+// corruptFile flips up to n bytes at the given offset in the file at path
+// using XOR with 0xFF, which is a simple corruption that changes every byte
+// without zeroing it. Partial reads from ReadAt are tolerated: the bytes
+// that were actually read are corrupted, the result reports Short=true,
+// and the executor records a fault_fired event for visibility.
+func corruptFile(path string, offset int64, n int) corruptResult {
+	res := corruptResult{Requested: n}
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
-		return err
+		res.Error = err
+		return res
 	}
 	defer f.Close()
 
 	buf := make([]byte, n)
-	_, err = f.ReadAt(buf, offset)
-	if err != nil {
-		return err
+	rn, rerr := f.ReadAt(buf, offset)
+	res.Corrupted = rn
+	if rn < n {
+		res.Short = true
 	}
-
-	for i := range buf {
-		buf[i] ^= 0xFF // flip all bits
+	if rn > 0 {
+		for i := 0; i < rn; i++ {
+			buf[i] ^= 0xFF
+		}
+		if _, werr := f.WriteAt(buf[:rn], offset); werr != nil && res.Error == nil {
+			res.Error = werr
+		}
 	}
-
-	_, err = f.WriteAt(buf, offset)
-	return err
+	if rerr != nil && res.Error == nil && rn == n {
+		// Full read but transport signalled an error (rare); surface it.
+		res.Error = rerr
+	}
+	return res
 }
 
-// _ keeps math import valid for Float64 if we add more math later.
-var _ = math.Pi
+// CorruptFileForTest is a test-only export that wraps corruptFile so tests
+// outside the fault package can drive the short-read behaviour directly.
+func CorruptFileForTest(path string, offset int64, n int) corruptResult {
+	return corruptFile(path, offset, n)
+}

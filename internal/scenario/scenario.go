@@ -23,6 +23,8 @@ import (
 // Scenario is the top-level parsed scenario document.
 type Scenario struct {
 	Seed       int64       `yaml:"seed"`
+	Extends    string      `yaml:"extends,omitempty"` // relative path to a base scenario (§composition)
+	Include    []string    `yaml:"include,omitempty"` // additional scenarios whose faults/assertions are merged in
 	Faults     []Fault     `yaml:"faults"`
 	Assertions []Assertion `yaml:"assertions"`
 }
@@ -30,11 +32,11 @@ type Scenario struct {
 // Fault is one fault rule in the scenario.
 type Fault struct {
 	Match       Matcher  `yaml:"match"`
-	At          string   `yaml:"at,omitempty"`           // temporal anchor (§4.3)
+	At          string   `yaml:"at,omitempty"`          // temporal anchor (§4.3)
 	Action      string   `yaml:"action"`                // action name (§4.4)
 	Probability *float64 `yaml:"probability,omitempty"` // 0..1; default 1.0
 	Count       int      `yaml:"count,omitempty"`       // for duplicate
-	Window      int      `yaml:"window,omitempty"`       // for reorder
+	Window      int      `yaml:"window,omitempty"`      // for reorder
 	Path        string   `yaml:"path,omitempty"`        // for corrupt_checkpoint
 	Offset      int64    `yaml:"offset,omitempty"`      // for corrupt_checkpoint
 	Bytes       int      `yaml:"bytes,omitempty"`       // for corrupt_checkpoint
@@ -42,10 +44,11 @@ type Fault struct {
 
 // Assertion is one assertion rule evaluated against the event log.
 type Assertion struct {
-	Type         string `yaml:"type"`
-	Key          string `yaml:"key,omitempty"`
-	WithinRetries int   `yaml:"within_retries,omitempty"`
-	Tool         string `yaml:"tool,omitempty"` // for custom verifier
+	Type          string `yaml:"type"`
+	Key           string `yaml:"key,omitempty"`
+	WithinRetries int    `yaml:"within_retries,omitempty"`
+	Tool          string `yaml:"tool,omitempty"` // for custom verifier
+	Expr          string `yaml:"expr,omitempty"` // DSL expression for type="expr"
 }
 
 // ---------------------------------------------------------------------------
@@ -217,15 +220,6 @@ func matchIDAny(pattern any, msg Message) bool {
 	}
 }
 
-// matchIDWildcard checks if pattern "*" matches any non-notification.
-func matchIDWildcard(msg Message) bool {
-	return msg.Kind != "notification"
-}
-
-// matchTypeIDWildcard is reserved for future use if id wildcards are added
-// to the matcher directly (currently handled by matchID with a sentinel).
-var _ = matchIDWildcard
-
 // ---------------------------------------------------------------------------
 // Parse / Marshal
 // ---------------------------------------------------------------------------
@@ -283,7 +277,18 @@ func (s Scenario) Validate() error {
 	// a document without "seed:" leaves it as zero, which is ambiguous.
 	// For v1 we accept zero as a valid seed value.
 
+	// Canonical anchor set inlined to avoid an import cycle: fault already
+	// depends on scenario. Keep in sync with fault.ValidAnchors().
+	validAnchors := map[string]bool{
+		"before_request_send":  true,
+		"after_request_sent":   true,
+		"before_response":      true,
+		"at_notification_recv": true,
+	}
 	for i, f := range s.Faults {
+		if f.At != "" && !validAnchors[f.At] {
+			return fmt.Errorf("fault[%d]: invalid anchor %q (valid: before_request_send, after_request_sent, before_response, at_notification_recv)", i, f.At)
+		}
 		if !validActions[f.Action] {
 			return fmt.Errorf("fault[%d]: invalid action %q", i, f.Action)
 		}

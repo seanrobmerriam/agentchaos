@@ -448,10 +448,13 @@ assertions: []
 	// 3) Send tools/call send_invoice — this should trigger kill_process
 	ip.sendLine(t, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"send_invoice","arguments":{}}}`)
 
-	// The proxy should exit with code 77
+	// C2 (commit 723bc2f): kill_process returns a signal instead of calling
+	// os.Exit(77). The proxy now exits cleanly (code 0) after the kill fires.
+	// What matters here is that the process actually terminated and the
+	// send_invoice response was never delivered to the client.
 	code, _ := ip.wait()
-	if code != 77 {
-		t.Fatalf("exit code: want 77 got %d (stderr: %s)", code, ip.stderr.String())
+	if code != 0 {
+		t.Fatalf("exit code: want 0 got %d (stderr: %s)", code, ip.stderr.String())
 	}
 
 	// Verify we did NOT receive the send_invoice response
@@ -465,7 +468,7 @@ assertions: []
 		}
 		t.Logf("[kill_process subprocess] received non-id:2 message (expected notifications): %s", leftover)
 	}
-	t.Logf("[kill_process subprocess] exit code 77, verified no id:2 response")
+	t.Logf("[kill_process subprocess] exit code 0, kill_process fired cleanly (C2), no id:2 response delivered")
 }
 
 // ============================================================================
@@ -670,11 +673,11 @@ func writeFile(t *testing.T, path string, data []byte) {
 // interactiveProxy is a subprocess wrapper that writes lines to the proxy's
 // stdin and reads lines from its stdout, with timing control.
 type interactiveProxy struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   *bufio.Reader
-	stderr   *bytesBuffer
-	binPath  string
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	stdout  *bufio.Reader
+	stderr  *bytesBuffer
+	binPath string
 }
 
 func startInteractiveProxy(t *testing.T, scenarioFile, upstreamCmd string) *interactiveProxy {

@@ -72,7 +72,7 @@ func TestProxyVsRealEverythingServer(t *testing.T) {
 	}()
 
 	// Build agent <-> proxy pipes.
-	agentInR, agentInW := oneWayForEnds() // proxy reads agentInR, agent writes agentInW
+	agentInR, agentInW := oneWayForEnds()   // proxy reads agentInR, agent writes agentInW
 	agentOutR, agentOutW := oneWayForEnds() // proxy writes agentOutW, agent reads agentOutR
 
 	// Proxy reads agentIn = agentInR; writes upstreamOut = childIn;

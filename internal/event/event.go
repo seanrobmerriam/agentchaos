@@ -41,6 +41,7 @@ type Event struct {
 	Direction  string // "agent_to_upstream" or "upstream_to_agent"
 	Raw        []byte // raw message bytes (for dropped/recorded messages)
 	Key        string // idempotency key or checkpoint key (for assertion events)
+	Source     string // origin of the event (e.g. "well-known-notification")
 }
 
 // Log is a thread-safe append-only event log.
@@ -84,18 +85,26 @@ func (l *Log) Len() int {
 	return len(l.events)
 }
 
-// Filter returns all events matching the given kinds.
+// Filter returns all events matching the given kinds. An empty kinds slice
+// copies every event (preserving the historical "no filter" behaviour); a
+// non-empty kinds slice iterates events and matches each Kind against the
+// variadic by index, avoiding the per-call map allocation the previous
+// implementation incurred.
 func (l *Log) Filter(kinds ...Kind) []Event {
-	want := make(map[Kind]bool, len(kinds))
-	for _, k := range kinds {
-		want[k] = true
-	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	var out []Event
+	if len(kinds) == 0 {
+		out := make([]Event, len(l.events))
+		copy(out, l.events)
+		return out
+	}
+	out := make([]Event, 0, len(l.events))
 	for _, e := range l.events {
-		if want[e.Kind] {
-			out = append(out, e)
+		for _, k := range kinds {
+			if e.Kind == k {
+				out = append(out, e)
+				break
+			}
 		}
 	}
 	return out

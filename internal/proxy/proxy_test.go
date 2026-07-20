@@ -94,11 +94,11 @@ func genMessageSequence(t *rapid.T) []byte {
 // uses to send and receive on each side.
 type pipeQuartet struct {
 	// forward: agent -> proxy -> upstream
-	agentInW   io.ReadWriteCloser // test writes here (proxy reads)
-	upOutR     io.ReadWriteCloser // test reads here (proxy writes)
+	agentInW io.ReadWriteCloser // test writes here (proxy reads)
+	upOutR   io.ReadWriteCloser // test reads here (proxy writes)
 	// reverse: upstream -> proxy -> agent
-	upInW      io.ReadWriteCloser // test writes here (proxy reads)
-	agentOutR  io.ReadWriteCloser // test reads here (proxy writes)
+	upInW     io.ReadWriteCloser // test writes here (proxy reads)
+	agentOutR io.ReadWriteCloser // test reads here (proxy writes)
 }
 
 // oneWay returns a synchronous io.Pipe pair split into a reader-end and a
@@ -132,9 +132,9 @@ func (s *writerSide) Close() error                { return s.c.Close() }
 // setupProxy builds a Proxy over four io ends and starts it in a goroutine.
 // The returned cancel func frees proxy goroutines after the test asserts.
 func setupProxy(t interface{ Helper() }) (*proxy.Proxy, context.CancelFunc, *pipeQuartet) {
-	agentInR, agentInW := oneWay() // proxy reads agentInR, agent writes agentInW
-	upOutR, upOutW := oneWay()     // proxy writes upOutW, upstream reads upOutR
-	upInR, upInW := oneWay()       // proxy reads upInR, upstream writes upInW
+	agentInR, agentInW := oneWay()   // proxy reads agentInR, agent writes agentInW
+	upOutR, upOutW := oneWay()       // proxy writes upOutW, upstream reads upOutR
+	upInR, upInW := oneWay()         // proxy reads upInR, upstream writes upInW
 	agentOutR, agentOutW := oneWay() // proxy writes agentOutW, agent reads agentOutR
 
 	p := proxy.New(agentInR, agentOutW, upInR, upOutW)

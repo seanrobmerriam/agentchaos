@@ -29,7 +29,7 @@ type Request struct {
 
 // ToolCallParams is the params shape of a MCP tools/call request.
 type ToolCallParams struct {
-	Name      string          `json:"name"`
+	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
@@ -73,6 +73,12 @@ func (s *Server) handleMessage(b []byte, w io.Writer) {
 	}
 	var req Request
 	if err := json.Unmarshal(b, &req); err != nil {
+		return
+	}
+
+	// JSON-RPC notification: id is absent (or null). Per the spec, servers
+	// MUST NOT reply to notifications — ignore before dispatching the method.
+	if len(req.ID) == 0 {
 		return
 	}
 

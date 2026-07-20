@@ -219,12 +219,12 @@ func TestMatcherIDWildcard(t *testing.T) {
 
 func TestParseMessageFromJSON(t *testing.T) {
 	cases := []struct {
-		name    string
-		json    string
-		kind    string
-		method  string
-		id      int64
-		tool    string
+		name   string
+		json   string
+		kind   string
+		method string
+		id     int64
+		tool   string
 	}{
 		{
 			name:   "request with tool",
@@ -248,8 +248,8 @@ func TestParseMessageFromJSON(t *testing.T) {
 			id:     2,
 		},
 		{
-			name:   "malformed",
-			json:   `{bad json}`,
+			name: "malformed",
+			json: `{bad json}`,
 		},
 	}
 	for _, c := range cases {

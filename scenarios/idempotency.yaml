@@ -1,0 +1,27 @@
+# Scenario: idempotency under response duplication.
+# The agent calls send_invoice exactly once. We send the response twice and
+# assert the agent never produces two observable effects for the same key.
+#
+# This scenario is the README Quick start example target. It exercises
+# the duplicate fault at before_response and the no_duplicate_effect
+# assertion. The agent is expected to receive exactly one response per
+# idempotency key.
+#
+# Note: terminal_state_reached requires the agent to emit a
+# `notifications/agentchaos/event` well-known notification before
+# assertions can evaluate it. See docs/well-known-notifications.md
+# (Task 5 / SUGGESTED_FEATURES #6).
+seed: 4891
+faults:
+  - match: {tool: "send_invoice"}
+    at: before_response
+    action: duplicate
+    count: 2
+  - match: {type: "notification", method: "notifications/webhook"}
+    action: duplicate
+    count: 2
+assertions:
+  - type: no_duplicate_effect
+    key: idempotency_key
+  - type: terminal_state_reached
+    within_retries: 5

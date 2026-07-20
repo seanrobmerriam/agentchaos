@@ -32,14 +32,25 @@ const (
 	AnchorAtNotification    Anchor = "at_notification_recv"
 )
 
+// ValidAnchors returns the canonical set of temporal anchors the executor
+// recognises. scenario.Validate calls this to reject typos.
+func ValidAnchors() []string {
+	return []string{
+		string(AnchorBeforeRequestSend),
+		string(AnchorAfterRequestSent),
+		string(AnchorBeforeResponse),
+		string(AnchorAtNotification),
+	}
+}
+
 // Entry is one record in the match log: a fault rule matched at a specific
 // point in the message flow.
 type Entry struct {
-	FaultIndex  int            // index into scenario.Faults
-	Fault       scenario.Fault // the fault rule that matched
-	Message     scenario.Message
-	Direction   Direction
-	Anchor      Anchor
+	FaultIndex int            // index into scenario.Faults
+	Fault      scenario.Fault // the fault rule that matched
+	Message    scenario.Message
+	Direction  Direction
+	Anchor     Anchor
 }
 
 // String renders a match log entry in a compact, deterministic format.
