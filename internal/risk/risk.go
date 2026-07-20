@@ -27,7 +27,7 @@ type Options struct {
 	Parallel     int           // max concurrent scenario runs (1 = sequential)
 	Timeout      time.Duration // per-seed wall-clock timeout
 	Shrink       bool          // reserved: shrink failure reproducers (not yet wired)
-	Reproducer  string        // reserved: dir prefix for shrunk reproducers
+	Reproducer   string        // reserved: dir prefix for shrunk reproducers
 	// SeedBase is added to the loop counter [1..Seeds] to produce the actual
 	// per-seed value written to scenario.Seed. Zero means start at base+1.
 	SeedBase int64

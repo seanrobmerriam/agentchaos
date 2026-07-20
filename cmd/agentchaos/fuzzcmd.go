@@ -68,11 +68,11 @@ func cmdFuzz(args []string) {
 			Iterations int    `json:"iterations,omitempty"`
 		}
 		type jsonReport struct {
-			Runs          int          `json:"runs"`
-			RunsFailed    int          `json:"runs_failed"`
-			UniqueClasses int          `json:"unique_classes"`
-			Classes       []jsonClass  `json:"classes"`
-			TimingMS      int64        `json:"timing_ms"`
+			Runs          int         `json:"runs"`
+			RunsFailed    int         `json:"runs_failed"`
+			UniqueClasses int         `json:"unique_classes"`
+			Classes       []jsonClass `json:"classes"`
+			TimingMS      int64       `json:"timing_ms"`
 		}
 		rep := jsonReport{
 			Runs:          r.Runs,

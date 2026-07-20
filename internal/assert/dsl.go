@@ -63,7 +63,7 @@ type dslValue struct {
 	isB bool // if true, the value is boolean; otherwise integer
 }
 
-func intVal(i int) dslValue  { return dslValue{i: i} }
+func intVal(i int) dslValue   { return dslValue{i: i} }
 func boolVal(b bool) dslValue { return dslValue{b: b, isB: true} }
 
 func toBool(v dslValue) (bool, error) {

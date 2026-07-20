@@ -8,7 +8,7 @@ import (
 
 // JUnitTestSuites is the root element of a JUnit XML report.
 type JUnitTestSuites struct {
-	XMLName xml.Name        `xml:"testsuites"`
+	XMLName xml.Name         `xml:"testsuites"`
 	Suites  []JUnitTestSuite `xml:"testsuite"`
 }
 
@@ -22,8 +22,8 @@ type JUnitTestSuite struct {
 
 // JUnitTestCase represents a single seed attempt.
 type JUnitTestCase struct {
-	Name      string       `xml:"name,attr"`
-	Classname string       `xml:"classname,attr"`
+	Name      string        `xml:"name,attr"`
+	Classname string        `xml:"classname,attr"`
 	Failure   *JUnitFailure `xml:"failure,omitempty"`
 }
 

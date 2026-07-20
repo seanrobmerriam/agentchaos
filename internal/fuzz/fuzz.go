@@ -61,13 +61,13 @@ func Generate(base *scenario.Scenario, maxFaults int, seed uint64) *scenario.Sce
 
 // Options configures a fuzz run.
 type Options struct {
-	ScenarioPath string        // base scenario (assertions reused from it)
-	Upstream     string        // upstream command
-	Runs         int           // total generated scenarios to execute (>=1)
-	MaxFaults    int           // upper bound on faults per generated scenario
-	Timeout      time.Duration // per-run timeout
-	ShrinkFails  bool          // shrink each unique failure class to a minimal reproducer
-	MaxShrinkIter int          // max shrink iterations per failure class (0 → 200)
+	ScenarioPath  string        // base scenario (assertions reused from it)
+	Upstream      string        // upstream command
+	Runs          int           // total generated scenarios to execute (>=1)
+	MaxFaults     int           // upper bound on faults per generated scenario
+	Timeout       time.Duration // per-run timeout
+	ShrinkFails   bool          // shrink each unique failure class to a minimal reproducer
+	MaxShrinkIter int           // max shrink iterations per failure class (0 → 200)
 }
 
 // FailureClass groups failures that share the same normalised reason.
@@ -83,11 +83,11 @@ type FailureClass struct {
 
 // Report summarises a fuzz run.
 type Report struct {
-	Runs           int
-	RunsFailed     int
-	Classes        []*FailureClass
-	UniqueClasses  int
-	Timing         time.Duration
+	Runs          int
+	RunsFailed    int
+	Classes       []*FailureClass
+	UniqueClasses int
+	Timing        time.Duration
 }
 
 // Run executes Runs generated scenarios and returns an aggregated Report.
