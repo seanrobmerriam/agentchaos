@@ -35,6 +35,8 @@ func main() {
 		cmdValidate(os.Args[2:])
 	case "inspect":
 		cmdInspect(os.Args[2:])
+	case "lint":
+		cmdLint(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -48,7 +50,8 @@ Usage:
   agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure]
   agentchaos replay   --seed <uint64> --scenario <path> [--upstream <cmd>]
   agentchaos validate --scenario <path>
-  agentchaos inspect  --scenario <path>`)
+  agentchaos inspect  --scenario <path>
+  agentchaos lint     --scenario <path>`)
 }
 
 func cmdRun(args []string) {
