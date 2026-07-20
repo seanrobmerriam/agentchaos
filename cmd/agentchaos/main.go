@@ -278,6 +278,32 @@ func cmdValidate(args []string) {
 	fmt.Println("valid")
 }
 
+func cmdLint(args []string) {
+	fs := flag.NewFlagSet("lint", flag.ExitOnError)
+	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
+	fs.Parse(args)
+	if *scenarioPath == "" {
+		fmt.Fprintln(os.Stderr, "lint: --scenario is required")
+		os.Exit(1)
+	}
+	s, err := scenario.Parse(readFile(*scenarioPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lint: scenario parse: %v\n", err)
+		os.Exit(78)
+	}
+	diags := scenario.Lint(s)
+	hasErr := false
+	for _, d := range diags {
+		fmt.Fprintf(os.Stderr, "%s: %s: %s\n", d.Severity, d.Location, d.Message)
+		if d.Severity == scenario.LintError {
+			hasErr = true
+		}
+	}
+	if hasErr {
+		os.Exit(78)
+	}
+}
+
 func cmdInspect(args []string) {
 	fs := flag.NewFlagSet("inspect", flag.ExitOnError)
 	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
