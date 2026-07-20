@@ -47,7 +47,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `agentchaos — fault injection proxy for MCP workflows
 
 Usage:
-  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure]
+  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure] [--no-shrink] [--stop-on first|all]
   agentchaos replay   --seed <uint64> --scenario <path> [--upstream <cmd>]
   agentchaos validate --scenario <path>
   agentchaos inspect  --scenario <path>
@@ -60,9 +60,17 @@ func cmdRun(args []string) {
 	upstreamCmd := fs.String("upstream", "", "upstream command (e.g. 'npx -y @modelcontextprotocol/server-everything stdio')")
 	seeds := fs.Int("seeds", 1, "number of seeds to try")
 	shrinkOnFailure := fs.Bool("shrink-on-failure", false, "shrink the fault schedule on failure")
+	noShrink := fs.Bool("no-shrink", false, "shorthand for --shrink-on-failure=false")
+	stopOn := fs.String("stop-on", "first", "stop after first failing seed (first) or run all (all)")
 	reproducerPath := fs.String("reproducer", "", "path to write minimal reproducer scenario on failure")
 	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
 	fs.Parse(args)
+
+	if *stopOn != "first" && *stopOn != "all" {
+		fmt.Fprintf(os.Stderr, "run: --stop-on must be 'first' or 'all' (got %q)\n", *stopOn)
+		os.Exit(2)
+	}
+	effectiveShrink := *shrinkOnFailure && !*noShrink
 
 	if *scenarioPath == "" {
 		fmt.Fprintln(os.Stderr, "run: --scenario is required")
@@ -75,6 +83,7 @@ func cmdRun(args []string) {
 		os.Exit(78)
 	}
 
+	worstExit := 0
 	for seed := int64(1); seed <= int64(*seeds); seed++ {
 		s := *baseScenario
 		if *seeds > 1 {
@@ -93,7 +102,7 @@ func cmdRun(args []string) {
 		fmt.Fprintf(os.Stderr, "[run] seed %d triggered failure: %s\n",
 			failedSeed, result.reason)
 
-		if *shrinkOnFailure {
+		if effectiveShrink {
 			fmt.Fprintln(os.Stderr, "[shrink] shrinking fault schedule...")
 			res, err := shrink.Shrink(&s, func(cand *scenario.Scenario) bool {
 				// Predicate: does this reduced scenario still fail
@@ -117,9 +126,18 @@ func cmdRun(args []string) {
 			}
 		}
 
-		os.Exit(result.exitCode)
+		if *stopOn == "first" {
+			os.Exit(result.exitCode)
+		}
+		if result.exitCode > worstExit {
+			worstExit = result.exitCode
+		}
 	}
 
+	if worstExit != 0 {
+		fmt.Fprintf(os.Stderr, "[run] %d seed(s) failed; exiting with worst code %d\n", *seeds, worstExit)
+		os.Exit(worstExit)
+	}
 	// All seeds passed.
 	fmt.Fprintf(os.Stderr, "[run] all %d seeds passed\n", *seeds)
 	os.Exit(0)
