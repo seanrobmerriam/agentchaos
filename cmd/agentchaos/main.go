@@ -1,3 +1,4 @@
+// Command agentchaos is the CLI entry point for the AgentChaos fault proxy.
 package main
 
 import (
@@ -10,6 +11,12 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/seanrobmerriam/agentchaos/internal/assert"
+	"github.com/seanrobmerriam/agentchaos/internal/fault"
+	"github.com/seanrobmerriam/agentchaos/internal/proxy"
+	"github.com/seanrobmerriam/agentchaos/internal/scenario"
+	"github.com/seanrobmerriam/agentchaos/internal/shrink"
 )
 
 func main() {
