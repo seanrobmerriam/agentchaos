@@ -89,7 +89,7 @@ func cmdRun(args []string) {
 
 		if *shrinkOnFailure {
 			fmt.Fprintln(os.Stderr, "[shrink] shrinking fault schedule...")
-			shrunk, err := shrink.Shrink(&s, func(cand *scenario.Scenario) bool {
+			res, err := shrink.Shrink(&s, func(cand *scenario.Scenario) bool {
 				// Predicate: does this reduced scenario still fail
 				// assertions with the same seed?
 				r := runWithAssertions(cand, *upstreamCmd)
@@ -98,10 +98,10 @@ func cmdRun(args []string) {
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[shrink] error: %v\n", err)
 			} else {
-				fmt.Fprintf(os.Stderr, "[shrink] %d → %d faults\n",
-					len(s.Faults), len(shrunk.Faults))
+				fmt.Fprintf(os.Stderr, "[shrink] %d → %d faults in %d iterations\n",
+					res.OriginalN, res.FinalN, res.Iterations)
 				if *reproducerPath != "" {
-					out, _ := scenario.Marshal(shrunk)
+					out, _ := scenario.Marshal(res.Scenario)
 					if werr := os.WriteFile(*reproducerPath, out, 0644); werr != nil {
 						fmt.Fprintf(os.Stderr, "[shrink] write reproducer: %v\n", werr)
 					} else {

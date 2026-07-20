@@ -76,10 +76,14 @@ func TestPhase6GateShrinkReproduces(t *testing.T) {
 	}
 
 	// Shrink
-	shrunk, err := shrink.Shrink(s, pred, shrink.Options{MaxIterations: 100})
+	res, err := shrink.Shrink(s, pred, shrink.Options{MaxIterations: 100})
 	if err != nil {
 		t.Fatalf("shrink: %v", err)
 	}
+	if res == nil {
+		t.Fatal("nil result")
+	}
+	shrunk := res.Scenario
 
 	if len(shrunk.Faults) != 2 {
 		t.Fatalf("expected 2 faults after shrink, got %d", len(shrunk.Faults))

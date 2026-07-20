@@ -67,20 +67,23 @@ func TestShrinkTenToTwo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shrink: %v", err)
 	}
+	if result == nil {
+		t.Fatal("nil result")
+	}
 
-	if len(result.Faults) != 2 {
-		t.Fatalf("expected 2 faults after shrinking, got %d", len(result.Faults))
+	if len(result.Scenario.Faults) != 2 {
+		t.Fatalf("expected 2 faults after shrinking, got %d", len(result.Scenario.Faults))
 	}
 
 	// Verify the predicate still holds on the shrunk scenario.
-	if !f(result) {
+	if !f(result.Scenario) {
 		t.Fatal("predicate should still hold after shrinking")
 	}
 
 	// The shrunk faults should be the ones originally at indices 3 and 7.
 	// After shrinking the indices are remapped, but the faults themselves
 	// should be the same objects.
-	t.Logf("[shrink] 10 → %d faults, predicate holds", len(result.Faults))
+	t.Logf("[shrink] 10 → %d faults, predicate holds", len(result.Scenario.Faults))
 }
 
 // ---- Example: shrink with target failures via event log ----
@@ -139,17 +142,20 @@ func TestShrinkNeverIncreases(t *testing.T) {
 	if err != nil {
 		t.Fatalf("shrink: %v", err)
 	}
+	if result == nil {
+		t.Fatal("nil result")
+	}
 
-	if len(result.Faults) > len(original.Faults) {
+	if len(result.Scenario.Faults) > len(original.Faults) {
 		t.Fatalf("shrink increased fault count: %d → %d",
-			len(original.Faults), len(result.Faults))
+			len(original.Faults), len(result.Scenario.Faults))
 	}
 	// With predicate "any fault >= 5", shrinking should find exactly 1
 	// fault (the minimal subset).
-	if !f(result) {
+	if !f(result.Scenario) {
 		t.Fatal("predicate should still hold after shrinking")
 	}
-	t.Logf("[shrink] 20 → %d faults (predicate: any >= 5)", len(result.Faults))
+	t.Logf("[shrink] 20 → %d faults (predicate: any >= 5)", len(result.Scenario.Faults))
 }
 
 // ---- Example: empty scenario ─ no crash ----

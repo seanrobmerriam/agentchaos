@@ -44,7 +44,7 @@ type Result struct {
 //
 // The predicate MUST hold on the original scenario; if it doesn't,
 // Shrink returns an error.
-func Shrink(original *scenario.Scenario, pred Predicate, opts Options) (*scenario.Scenario, error) {
+func Shrink(original *scenario.Scenario, pred Predicate, opts Options) (*Result, error) {
 	if len(original.Faults) == 0 {
 		return nil, fmt.Errorf("shrink: scenario has no faults to shrink")
 	}
@@ -66,7 +66,12 @@ func Shrink(original *scenario.Scenario, pred Predicate, opts Options) (*scenari
 		for i := 0; i < len(current.Faults); i++ {
 			iterations++
 			if iterations > maxIter {
-				return current, nil
+				return &Result{
+					Scenario:   current,
+					Iterations: iterations,
+					OriginalN:  len(original.Faults),
+					FinalN:     len(current.Faults),
+				}, nil
 			}
 			// Try removing fault at index i.
 			candidate := removeFault(current, i)
@@ -83,8 +88,12 @@ func Shrink(original *scenario.Scenario, pred Predicate, opts Options) (*scenari
 		}
 	}
 
-	_ = Result{Scenario: current, Iterations: iterations, OriginalN: len(original.Faults), FinalN: len(current.Faults)}
-	return current, nil
+	return &Result{
+		Scenario:   current,
+		Iterations: iterations,
+		OriginalN:  len(original.Faults),
+		FinalN:     len(current.Faults),
+	}, nil
 }
 
 // copyScenario returns a shallow copy of the scenario with a copy of the
