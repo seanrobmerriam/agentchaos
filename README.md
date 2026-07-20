@@ -2,7 +2,7 @@
 
 # agentchaos
 
-### Transparent MCP fault-injection proxy for testing agent recovery logic.
+### Transparent mcp fault-injection proxy for testing agent recovery logic
 
 agentchaos sits between an agent runtime (the MCP client) and one or more
 upstream MCP servers. It intercepts every JSON-RPC message crossing the wire
@@ -12,14 +12,14 @@ results, forcing an `IN_DOUBT` outcome, or corrupting a durable checkpoint
 file on disk.
 
 Teams claiming durable execution need a way to prove their recovery logic
-actually survives real failure conditions — AgentChaos is that proof,
-runnable in CI, with a Jepsen-style shrinking step that reduces a failing
+actually survives real failure conditions — agentchaos is that proof,
+runnable in CI, with a jepsen-style shrinking step that reduces a failing
 seed down to the minimal fault schedule that reproduces the bug.
 
 
 # What it does
 
-AgentChaos proves recovery logic breaks under **these fault classes** — it is
+agentchaos proves recovery logic breaks under **these fault classes** — it is
 not an exhaustive correctness proof. Specifically:
 
 - It covers **message-level** faults (drop, duplicate, reorder, kill,
@@ -289,7 +289,7 @@ by `--reproducer`.
 
 ## Transports
 
-AgentChaos speaks MCP's two current standard transports:
+agentchaos speaks MCP's two current standard transports:
 
 - **stdio** — the agent connects to the proxy via stdin/stdout; the proxy
   connects to the upstream server via stdin/stdout (subprocess).
@@ -304,7 +304,7 @@ Streamable HTTP to the upstream.
 ```
 Agent (MCP client)
    ↕ stdio (newline-delimited JSON-RPC)
-AgentChaos proxy
+agentchaos proxy
    ↕ stdio or Streamable HTTP
 Upstream MCP server
 ```
