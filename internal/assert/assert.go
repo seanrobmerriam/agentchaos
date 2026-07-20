@@ -63,6 +63,18 @@ func Check(a scenario.Assertion, log *event.Log) Result {
 		return checkTerminalStateReached(a, log)
 	case "effect_without_checkpoint_commit":
 		return checkEffectWithoutCheckpoint(a, log)
+	case "expr":
+		if a.Expr == "" {
+			return Result{Failed: true, Reason: "assertion type 'expr' requires a non-empty 'expr' field"}
+		}
+		ok, err := Evaluate(a.Expr, log)
+		if err != nil {
+			return Result{Failed: true, Reason: err.Error()}
+		}
+		if !ok {
+			return Result{Failed: true, Reason: fmt.Sprintf("DSL expression evaluated to false: %s", a.Expr)}
+		}
+		return Result{}
 	default:
 		return Result{
 			Failed: true,
