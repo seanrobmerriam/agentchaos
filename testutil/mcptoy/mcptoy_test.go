@@ -13,7 +13,7 @@ func TestHandleMessageUnknownNotificationNoReply(t *testing.T) {
 	var w bytes.Buffer
 	s := New()
 	// Notification: no "id" field, unknown method. JSON-RPC servers must not reply.
-	s.handleMessage([]byte(`{"jsonrpc":"2.0","method":"notifications/unknown"}` + "\n"), &w)
+	s.handleMessage([]byte(`{"jsonrpc":"2.0","method":"notifications/unknown"}`+"\n"), &w)
 	if w.Len() != 0 {
 		t.Fatalf("expected no response to notification, got %d bytes: %q", w.Len(), w.String())
 	}
