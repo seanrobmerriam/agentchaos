@@ -1,4 +1,4 @@
-<img src="assets/agentchaos.png" alt="agentchaos-logo" width="300" />   
+<img src="assets/agentchaos.png" alt="agentchaos-logo" width="1200" />   
 
 # AgentChaos
 
