@@ -23,6 +23,8 @@ import (
 // Scenario is the top-level parsed scenario document.
 type Scenario struct {
 	Seed       int64       `yaml:"seed"`
+	Extends    string      `yaml:"extends,omitempty"`  // relative path to a base scenario (§composition)
+	Include    []string    `yaml:"include,omitempty"`  // additional scenarios whose faults/assertions are merged in
 	Faults     []Fault     `yaml:"faults"`
 	Assertions []Assertion `yaml:"assertions"`
 }
@@ -46,6 +48,7 @@ type Assertion struct {
 	Key           string `yaml:"key,omitempty"`
 	WithinRetries int    `yaml:"within_retries,omitempty"`
 	Tool          string `yaml:"tool,omitempty"` // for custom verifier
+	Expr          string `yaml:"expr,omitempty"` // DSL expression for type="expr"
 }
 
 // ---------------------------------------------------------------------------
