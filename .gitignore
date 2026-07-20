@@ -1,5 +1,4 @@
 # Build artifacts
-agentchaos
 *.exe
 
 # Test artifacts
