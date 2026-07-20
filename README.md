@@ -1,8 +1,10 @@
-# AgentChaos
+<img src="assets/agentchaos.png" alt="agentchaos-logo" width="1200" />   
 
-> Transparent MCP fault-injection proxy for testing agent recovery logic.
+# agentchaos
 
-AgentChaos sits between an agent runtime (the MCP client) and one or more
+### Transparent mcp fault-injection proxy for testing agent recovery logic
+
+agentchaos sits between an agent runtime (the MCP client) and one or more
 upstream MCP servers. It intercepts every JSON-RPC message crossing the wire
 and injects failures according to a declarative scenario: killing the process
 mid-tool-call, duplicating a notification, reordering concurrent tool
@@ -10,22 +12,23 @@ results, forcing an `IN_DOUBT` outcome, or corrupting a durable checkpoint
 file on disk.
 
 Teams claiming durable execution need a way to prove their recovery logic
-actually survives real failure conditions — AgentChaos is that proof,
-runnable in CI, with a Jepsen-style shrinking step that reduces a failing
+actually survives real failure conditions — agentchaos is that proof,
+runnable in CI, with a jepsen-style shrinking step that reduces a failing
 seed down to the minimal fault schedule that reproduces the bug.
 
-## Honest scope
 
-AgentChaos proves recovery logic breaks under **these fault classes** — it is
+# What it does
+
+agentchaos proves recovery logic breaks under **these fault classes** — it is
 not an exhaustive correctness proof. Specifically:
 
 - It covers **message-level** faults (drop, duplicate, reorder, kill,
   in_doubt) at the JSON-RPC layer.
 - It does **not** cover network-level faults (packet loss, latency below the
   MCP message layer). Pair with `tc` or [Toxiproxy](https://github.com/Shopify/toxiproxy) for that.
-- It is **single-proxy, single-upstream-connection** in v1. Multi-node
-  distributed scenarios (faults coordinated across several proxies) are a
-  non-goal.
+- It is **single-proxy, single-upstream-connection** in the current version. Multi-node
+  distributed scenarios (faults coordinated across several proxies) will be a
+  future addition.
 - `corrupt_checkpoint` fidelity depends on knowing the target's on-disk
   format. The primitive is a generic "flip N bytes at offset X in file Y at
   time T" — format-awareness is left to the scenario author.
@@ -516,21 +519,22 @@ for `agentchaos replay`.
 
 ## Transports
 
-The agent always speaks stdio to the proxy. The proxy supports two upstream
-transports:
+agentchaos speaks MCP's two current standard transports:
 
 - **stdio** (default) — the proxy spawns the upstream as a subprocess and
   communicates via stdin/stdout. Pass `--upstream '<cmd>'`.
 - **Streamable HTTP** — the proxy connects to an upstream HTTP server. SSE
-  reverse-channel supported via `--reverse-get`. Pass
-  `--transport http --upstream-url <url>`.
+  reverse-channel supported via `HTTPOptions.ReverseGET`.
+
+In the current version, the agent always speaks stdio to the proxy; the proxy speaks stdio or
+Streamable HTTP to the upstream.
 
 ## Architecture
 
 ```
 Agent (MCP client)
    ↕ stdio (newline-delimited JSON-RPC)
-AgentChaos proxy
+agentchaos proxy
    ↕ stdio or Streamable HTTP
 Upstream MCP server
 ```
