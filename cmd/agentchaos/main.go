@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/seanrobmerriam/agentchaos/internal/assert"
+	"github.com/seanrobmerriam/agentchaos/internal/event"
 	"github.com/seanrobmerriam/agentchaos/internal/fault"
 	"github.com/seanrobmerriam/agentchaos/internal/scenario"
 	"github.com/seanrobmerriam/agentchaos/internal/shrink"
@@ -37,6 +38,8 @@ func main() {
 		cmdInspect(os.Args[2:])
 	case "lint":
 		cmdLint(os.Args[2:])
+	case "explain":
+		cmdExplain(os.Args[2:])
 	default:
 		usage()
 		os.Exit(1)
@@ -47,11 +50,12 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `agentchaos — fault injection proxy for MCP workflows
 
 Usage:
-  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure] [--no-shrink] [--shrink-strategy greedy|bisect] [--shrink-max-iter N] [--stop-on first|all]
+  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure] [--no-shrink] [--shrink-strategy greedy|bisect] [--shrink-max-iter N] [--stop-on first|all] [--event-log <path>]
   agentchaos replay   --seed <uint64> --scenario <path> [--upstream <cmd>]
   agentchaos validate --scenario <path>
   agentchaos inspect  --scenario <path>
-  agentchaos lint     --scenario <path>`)
+  agentchaos lint     --scenario <path>
+  agentchaos explain  --event-log <path>`)
 }
 
 func cmdRun(args []string) {
@@ -66,6 +70,7 @@ func cmdRun(args []string) {
 	stopOn := fs.String("stop-on", "first", "stop after first failing seed (first) or run all (all)")
 	reproducerPath := fs.String("reproducer", "", "path to write minimal reproducer scenario on failure")
 	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
+	eventLogPath := fs.String("event-log", "", "write the event log as NDJSON to this path")
 	fs.Parse(args)
 
 	if *stopOn != "first" && *stopOn != "all" {
@@ -94,6 +99,10 @@ func cmdRun(args []string) {
 
 		// Run the scenario + assertions.
 		result := runWithAssertions(&s, *upstreamCmd, *timeout)
+
+		// Export the event log as NDJSON if --event-log is set. Done
+		// unconditionally per-seed so the log survives early exits.
+		writeEventLog(*eventLogPath, result.eventLog, s.Seed)
 
 		if result.passed && result.exitCode == 0 {
 			continue // no failure found; try next seed
@@ -157,6 +166,7 @@ type runResult struct {
 	exitCode int
 	pumpCode int
 	reason   string
+	eventLog *event.Log // captured for --event-log export; nil if no executor ran
 }
 
 // runScenario builds the fault executor, launches the upstream subprocess,
@@ -175,23 +185,26 @@ func runScenario(s *scenario.Scenario, upstreamCmd string, timeout time.Duration
 	if err != nil {
 		return runResult{passed: false, exitCode: 78, reason: fmt.Sprintf("executor: %v", err)}
 	}
+	// eventLog is captured here so every return path after this point can
+	// surface the in-flight log to the caller (for --event-log export).
+	eventLog := ex.EventLog()
 
 	parts := strings.Fields(upstreamCmd)
 	if len(parts) == 0 {
-		return runResult{passed: false, exitCode: 1, reason: "no upstream command"}
+		return runResult{passed: false, exitCode: 1, reason: "no upstream command", eventLog: eventLog}
 	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	cmd.Stderr = os.Stderr
 	upIn, err := cmd.StdinPipe()
 	if err != nil {
-		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdin: %v", err)}
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdin: %v", err), eventLog: eventLog}
 	}
 	upOut, err := cmd.StdoutPipe()
 	if err != nil {
-		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdout: %v", err)}
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdout: %v", err), eventLog: eventLog}
 	}
 	if err := cmd.Start(); err != nil {
-		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("start: %v", err)}
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("start: %v", err), eventLog: eventLog}
 	}
 	defer func() {
 		_ = cmd.Process.Kill()
@@ -224,7 +237,7 @@ func runScenario(s *scenario.Scenario, upstreamCmd string, timeout time.Duration
 	}
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return runResult{passed: false, exitCode: 75, pumpCode: pumpCode, reason: "timeout"}
+		return runResult{passed: false, exitCode: 75, pumpCode: pumpCode, reason: "timeout", eventLog: eventLog}
 	}
 
 	// Check assertions against the event log.
@@ -242,6 +255,7 @@ func runScenario(s *scenario.Scenario, upstreamCmd string, timeout time.Duration
 				exitCode: 70, // SPEC §8: assertion failure
 				pumpCode: pumpCode,
 				reason:   strings.Join(reasons, "; "),
+				eventLog: eventLog,
 			}
 		}
 	}
@@ -249,7 +263,7 @@ func runScenario(s *scenario.Scenario, upstreamCmd string, timeout time.Duration
 	// Success: mask the raw pump code (e.g. 77 from kill_process) to 0
 	// per the C2 contract — kill_process signals the run rather than
 	// failing it. runOnce exposes the raw code separately.
-	return runResult{passed: pumpCode == 0, exitCode: 0, pumpCode: pumpCode}
+	return runResult{passed: pumpCode == 0, exitCode: 0, pumpCode: pumpCode, eventLog: eventLog}
 }
 
 // runWithAssertions delegates to runScenario, preserving the runResult
@@ -439,4 +453,24 @@ func trimTrailingNewline(b []byte) []byte {
 		b = b[:len(b)-1]
 	}
 	return b
+}
+
+// writeEventLog serialises log to path as NDJSON. It is a no-op when path
+// is empty or log is nil. Failures are reported on stderr but do not abort
+// the run — exporting the event log is a side feature.
+func writeEventLog(path string, log *event.Log, seed int64) {
+	if path == "" || log == nil {
+		return
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[run] --event-log: create %s: %v\n", path, err)
+		return
+	}
+	defer f.Close()
+	if err := log.WriteNDJSON(f); err != nil {
+		fmt.Fprintf(os.Stderr, "[run] --event-log: write %s: %v\n", path, err)
+		return
+	}
+	fmt.Fprintf(os.Stderr, "[run] --event-log: wrote seed %d events to %s\n", seed, path)
 }
