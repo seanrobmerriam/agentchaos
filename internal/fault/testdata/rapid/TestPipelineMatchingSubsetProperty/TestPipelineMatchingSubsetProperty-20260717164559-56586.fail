@@ -1,0 +1,12 @@
+# 2026/07/17 16:45:59.328816 [TestPipelineMatchingSubsetProperty] [rapid] draw kind: "request"
+# 2026/07/17 16:45:59.328821 [TestPipelineMatchingSubsetProperty] [rapid] draw method: "tools/call"
+# 2026/07/17 16:45:59.328822 [TestPipelineMatchingSubsetProperty] [rapid] draw tool: "echo"
+# 2026/07/17 16:45:59.328822 [TestPipelineMatchingSubsetProperty] want match=true, got false for {Kind:request Method:tools/call ID:1 Tool:echo}
+# 
+v0.4.8#9674521008933074092
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
