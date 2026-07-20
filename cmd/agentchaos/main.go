@@ -410,3 +410,22 @@ func pumpWithFaults(ctx context.Context, agentIn io.Reader, agentOut io.Writer, 
 
 	return exitCode
 }
+
+func readFile(path string) []byte {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "read %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	return b
+}
+
+func trimTrailingNewline(b []byte) []byte {
+	for len(b) > 0 && (b[len(b)-1] == '\n' || b[len(b)-1] == '\r') {
+		b = b[:len(b)-1]
+	}
+	return b
+}
+
+// import sync for pumpWithFaults
+var _ = proxy.New // placeholder until proxy is wired into the CLI
