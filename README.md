@@ -294,7 +294,7 @@ AgentChaos speaks MCP's two current standard transports:
 - **Streamable HTTP** — the proxy connects to an upstream HTTP server. SSE
   reverse-channel supported via `HTTPOptions.ReverseGET`.
 
-In v1, the agent always speaks stdio to the proxy; the proxy speaks stdio or
+In the current version, the agent always speaks stdio to the proxy; the proxy speaks stdio or
 Streamable HTTP to the upstream.
 
 ## Architecture
