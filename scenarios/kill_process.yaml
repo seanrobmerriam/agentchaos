@@ -1,0 +1,7 @@
+# Scenario: kill the proxy mid-tool-call to test agent retry logic.
+seed: 1
+faults:
+  - match: {tool: "counter"}
+    action: kill_process
+    probability: 1.0
+assertions: []

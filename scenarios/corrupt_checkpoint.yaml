@@ -1,0 +1,11 @@
+# Scenario: corrupt a checkpoint file after a charge_card call.
+# This tests whether the agent detects corruption on recovery.
+seed: 100
+faults:
+  - match: {tool: "charge_card"}
+    action: corrupt_checkpoint
+    path: /tmp/agentchaos-checkpoint.db
+    offset: 0
+    bytes: 4
+assertions:
+  - type: effect_without_checkpoint_commit

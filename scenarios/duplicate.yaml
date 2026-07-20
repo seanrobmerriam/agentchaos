@@ -1,0 +1,10 @@
+# Scenario: duplicate every response to test agent idempotency.
+seed: 7
+faults:
+  - match: {type: "response"}
+    at: before_response
+    action: duplicate
+    count: 2
+assertions:
+  - type: no_duplicate_effect
+    key: idempotency_key

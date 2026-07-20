@@ -1,0 +1,23 @@
+# Example scenario: idempotency test.
+# The agent sends charge_card; in_doubt drops the response.
+# The assertion checks no duplicate effect with the same idempotency key.
+seed: 4891
+faults:
+  - match: {tool: "send_invoice"}
+    at: after_request_sent
+    action: kill_process
+    probability: 1.0
+  - match: {type: "notification", method: "notifications/webhook"}
+    action: duplicate
+    count: 2
+  - match: {tool: "*"}
+    at: before_response
+    action: reorder
+    window: 3
+  - match: {tool: "charge_card"}
+    action: in_doubt
+assertions:
+  - type: no_duplicate_effect
+    key: idempotency_key
+  - type: terminal_state_reached
+    within_retries: 5

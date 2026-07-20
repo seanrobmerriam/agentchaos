@@ -1,0 +1,10 @@
+# Scenario: drop the response to charge_card, leaving the agent uncertain.
+# Asserts no duplicate effect when the agent retries with a different
+# idempotency key.
+seed: 42
+faults:
+  - match: {tool: "charge_card"}
+    action: in_doubt
+assertions:
+  - type: no_duplicate_effect
+    key: idempotency_key
