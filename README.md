@@ -14,7 +14,8 @@ actually survives real failure conditions — AgentChaos is that proof,
 runnable in CI, with a Jepsen-style shrinking step that reduces a failing
 seed down to the minimal fault schedule that reproduces the bug.
 
-## Honest scope
+
+# What it does
 
 AgentChaos proves recovery logic breaks under **these fault classes** — it is
 not an exhaustive correctness proof. Specifically:
