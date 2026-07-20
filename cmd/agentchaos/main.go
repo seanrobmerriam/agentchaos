@@ -62,6 +62,8 @@ func cmdRun(args []string) {
 	fs := flag.NewFlagSet("run", flag.ExitOnError)
 	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
 	upstreamCmd := fs.String("upstream", "", "upstream command (e.g. 'npx -y @modelcontextprotocol/server-everything stdio')")
+	transport := fs.String("transport", "stdio", "upstream transport: stdio|http")
+	upstreamURL := fs.String("upstream-url", "", "upstream URL for --transport http")
 	seeds := fs.Int("seeds", 1, "number of seeds to try")
 	shrinkOnFailure := fs.Bool("shrink-on-failure", false, "shrink the fault schedule on failure")
 	noShrink := fs.Bool("no-shrink", false, "shorthand for --shrink-on-failure=false")
@@ -75,6 +77,14 @@ func cmdRun(args []string) {
 
 	if *stopOn != "first" && *stopOn != "all" {
 		fmt.Fprintf(os.Stderr, "run: --stop-on must be 'first' or 'all' (got %q)\n", *stopOn)
+		os.Exit(2)
+	}
+	if *transport != "stdio" && *transport != "http" {
+		fmt.Fprintf(os.Stderr, "run: --transport must be 'stdio' or 'http' (got %q)\n", *transport)
+		os.Exit(2)
+	}
+	if *transport == "http" && *upstreamURL == "" {
+		fmt.Fprintln(os.Stderr, "run: --transport http requires --upstream-url")
 		os.Exit(2)
 	}
 	effectiveShrink := *shrinkOnFailure && !*noShrink

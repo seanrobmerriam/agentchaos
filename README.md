@@ -291,10 +291,11 @@ AgentChaos v1 supports stdio upstream:
 - **stdio** — the agent connects to the proxy via stdin/stdout; the proxy
   connects to the upstream server via stdin/stdout (subprocess).
 
-In v1, both sides always speak stdio. Streamable HTTP upstream transport is
-tracked in `SUGGESTED_FEATURES.md` §2 and will land in a follow-up. The
-`internal/proxy` package currently contains a non-fault-aware HTTP shuttle
-(`http_proxy.go`) retained for the upcoming transport-switch work.
+In v1, the agent always speaks stdio to the proxy. The proxy speaks stdio or
+Streamable HTTP to the upstream:
+
+- **stdio** (default) — pass `--upstream '<cmd>'`.
+- **Streamable HTTP** — pass `--transport http --upstream-url <url>`.
 
 ## Architecture
 

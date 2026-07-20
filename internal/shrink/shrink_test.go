@@ -186,6 +186,7 @@ func TestShrinkNoFailureToReproduce(t *testing.T) {
 // ---- helpers ----
 
 func strPtrShort(s string) *string { return &s }
+
 // ---- helpers for bisect strategy test ----
 
 // makeFaultScenario builds a scenario with n faults, each tagged with
@@ -219,4 +220,3 @@ func TestShrinkBisectStrategy(t *testing.T) {
 		t.Fatal("expected reduction")
 	}
 }
-
