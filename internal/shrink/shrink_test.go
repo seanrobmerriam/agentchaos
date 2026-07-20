@@ -186,3 +186,37 @@ func TestShrinkNoFailureToReproduce(t *testing.T) {
 // ---- helpers ----
 
 func strPtrShort(s string) *string { return &s }
+// ---- helpers for bisect strategy test ----
+
+// makeFaultScenario builds a scenario with n faults, each tagged with
+// a unique tool name. The faults are otherwise identical so a
+// predicate that always holds will shrink the scenario to nothing.
+func makeFaultScenario(n int) *scenario.Scenario {
+	s := &scenario.Scenario{Seed: 1}
+	for i := 0; i < n; i++ {
+		toolName := fmt.Sprintf("tool_%d", i)
+		s.Faults = append(s.Faults, scenario.Fault{
+			Match:  scenario.Matcher{Tool: &toolName},
+			Action: "in_doubt",
+		})
+	}
+	return s
+}
+
+// alwaysTrue is a predicate that returns true on every scenario,
+// including empty ones.
+func alwaysTrue(s *scenario.Scenario) bool { return true }
+
+// ---- bisect strategy ----
+
+func TestShrinkBisectStrategy(t *testing.T) {
+	orig := makeFaultScenario(8) // 8-fault scenario; predicate always true
+	r, err := shrink.Shrink(orig, alwaysTrue, shrink.Options{Strategy: shrink.StrategyBisect})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r == nil || len(r.Scenario.Faults) >= 8 {
+		t.Fatal("expected reduction")
+	}
+}
+

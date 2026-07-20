@@ -47,7 +47,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `agentchaos — fault injection proxy for MCP workflows
 
 Usage:
-  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure] [--no-shrink] [--stop-on first|all]
+  agentchaos run      --scenario <path> [--upstream <cmd>] [--seeds N] [--shrink-on-failure] [--no-shrink] [--shrink-strategy greedy|bisect] [--shrink-max-iter N] [--stop-on first|all]
   agentchaos replay   --seed <uint64> --scenario <path> [--upstream <cmd>]
   agentchaos validate --scenario <path>
   agentchaos inspect  --scenario <path>
@@ -61,6 +61,8 @@ func cmdRun(args []string) {
 	seeds := fs.Int("seeds", 1, "number of seeds to try")
 	shrinkOnFailure := fs.Bool("shrink-on-failure", false, "shrink the fault schedule on failure")
 	noShrink := fs.Bool("no-shrink", false, "shorthand for --shrink-on-failure=false")
+	shrinkStrategy := fs.String("shrink-strategy", "greedy", "shrink strategy: greedy|bisect")
+	shrinkMaxIter := fs.Int("shrink-max-iter", 200, "max shrink iterations")
 	stopOn := fs.String("stop-on", "first", "stop after first failing seed (first) or run all (all)")
 	reproducerPath := fs.String("reproducer", "", "path to write minimal reproducer scenario on failure")
 	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
@@ -109,7 +111,7 @@ func cmdRun(args []string) {
 				// assertions with the same seed?
 				r := runWithAssertions(cand, *upstreamCmd, *timeout)
 				return !r.passed
-			}, shrink.Options{MaxIterations: 200})
+			}, shrink.Options{MaxIterations: *shrinkMaxIter, Strategy: shrink.Strategy(*shrinkStrategy)})
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[shrink] error: %v\n", err)
 			} else {
