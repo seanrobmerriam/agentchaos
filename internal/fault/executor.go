@@ -2,7 +2,6 @@ package fault
 
 import (
 	"fmt"
-	"math"
 	"os"
 	"sync"
 
@@ -458,6 +457,3 @@ func corruptFile(path string, offset int64, n int) error {
 	_, err = f.WriteAt(buf, offset)
 	return err
 }
-
-// _ keeps math import valid for Float64 if we add more math later.
-var _ = math.Pi

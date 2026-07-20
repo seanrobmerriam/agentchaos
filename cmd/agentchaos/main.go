@@ -14,7 +14,6 @@ import (
 
 	"github.com/seanrobmerriam/agentchaos/internal/assert"
 	"github.com/seanrobmerriam/agentchaos/internal/fault"
-	"github.com/seanrobmerriam/agentchaos/internal/proxy"
 	"github.com/seanrobmerriam/agentchaos/internal/scenario"
 	"github.com/seanrobmerriam/agentchaos/internal/shrink"
 )
@@ -433,6 +432,3 @@ func trimTrailingNewline(b []byte) []byte {
 	}
 	return b
 }
-
-// import sync for pumpWithFaults
-var _ = proxy.New // placeholder until proxy is wired into the CLI

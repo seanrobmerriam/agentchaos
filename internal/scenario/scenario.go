@@ -217,15 +217,6 @@ func matchIDAny(pattern any, msg Message) bool {
 	}
 }
 
-// matchIDWildcard checks if pattern "*" matches any non-notification.
-func matchIDWildcard(msg Message) bool {
-	return msg.Kind != "notification"
-}
-
-// matchTypeIDWildcard is reserved for future use if id wildcards are added
-// to the matcher directly (currently handled by matchID with a sentinel).
-var _ = matchIDWildcard
-
 // ---------------------------------------------------------------------------
 // Parse / Marshal
 // ---------------------------------------------------------------------------
