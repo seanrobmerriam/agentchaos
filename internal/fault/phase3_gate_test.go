@@ -362,10 +362,13 @@ assertions: []
 	// tools/call counter — kill fires
 	ip.sendLine(t, `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"counter"}}`)
 
-	// Proxy should exit with code 77
+	// C2 (commit 723bc2f): kill_process returns a signal instead of calling
+	// os.Exit(77). The proxy now exits cleanly (code 0) after the kill fires.
+	// The gate's purpose is to confirm kill_process actually terminates the
+	// proxy and drops the in-flight response — not the literal exit code.
 	code, _ := ip.wait()
-	if code != 77 {
-		t.Fatalf("exit code: want 77 got %d (stderr: %s)", code, ip.stderr.String())
+	if code != 0 {
+		t.Fatalf("exit code: want 0 got %d (stderr: %s)", code, ip.stderr.String())
 	}
 
 	// No response with id:2 should have been received
@@ -373,7 +376,7 @@ assertions: []
 	if gotResponse {
 		// May be a notification, that's OK — just not id:2
 	}
-	t.Logf("[kill_process gate] exit code 77, counter request forwarded, response dropped by death")
+	t.Logf("[kill_process gate] exit code 0, kill_process fired cleanly (C2), counter response dropped")
 }
 
 // suppress unused
