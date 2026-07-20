@@ -36,10 +36,10 @@ type ScheduleEntry struct {
 // Unlike the Phase 2 Pipeline (which only logs matches), the Executor
 // modifies, drops, duplicates, or terminates on matched messages.
 type Executor struct {
-	scenario *scenario.Scenario
-	exitFn   ExitFunc
+	scenario  *scenario.Scenario
+	exitFn    ExitFunc
 	transport Transport
-	prng     *splitMix64
+	prng      *splitMix64
 
 	mu sync.Mutex
 	// pendingInDoubt maps request id → true for requests whose responses
@@ -63,12 +63,12 @@ type Executor struct {
 // NewExecutor creates an executor for stdio transport (default).
 func NewExecutor(s *scenario.Scenario, exitFn ExitFunc) *Executor {
 	return &Executor{
-		scenario:        s,
-		exitFn:          exitFn,
-		transport:       TransportStdio,
-		prng:            newSplitMix64(uint64(s.Seed)),
-		pendingInDoubt:  make(map[int64]bool),
-		eventLog:        event.New(),
+		scenario:       s,
+		exitFn:         exitFn,
+		transport:      TransportStdio,
+		prng:           newSplitMix64(uint64(s.Seed)),
+		pendingInDoubt: make(map[int64]bool),
+		eventLog:       event.New(),
 	}
 }
 
@@ -76,12 +76,12 @@ func NewExecutor(s *scenario.Scenario, exitFn ExitFunc) *Executor {
 // Returns an error if a scenario uses reorder in stdio mode.
 func NewExecutorForTransport(s *scenario.Scenario, exitFn ExitFunc, transport Transport) (*Executor, error) {
 	ex := &Executor{
-		scenario:        s,
-		exitFn:          exitFn,
-		transport:       transport,
-		prng:            newSplitMix64(uint64(s.Seed)),
-		pendingInDoubt:  make(map[int64]bool),
-		eventLog:        event.New(),
+		scenario:       s,
+		exitFn:         exitFn,
+		transport:      transport,
+		prng:           newSplitMix64(uint64(s.Seed)),
+		pendingInDoubt: make(map[int64]bool),
+		eventLog:       event.New(),
 	}
 	if transport == TransportStdio {
 		for i, f := range s.Faults {
@@ -176,7 +176,7 @@ func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Directi
 		ex.eventLog.Record(event.Event{
 			Kind:      event.KindResponseDropped,
 			MsgID:     msg.ID,
-			Direction:  string(dir),
+			Direction: string(dir),
 			Raw:       raw,
 		})
 		return nil, false // dropped

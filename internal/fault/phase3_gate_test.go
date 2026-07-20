@@ -48,13 +48,13 @@ func (d *dualPipe) Close() error {
 // It creates a toy MCP Server, wires it through the executor-driven pump,
 // and provides interactive send/read methods for the test.
 type proxyHarness struct {
-	t          *testing.T
-	srv        *mcptoy.Server
-	ex         *fault.Executor
-	agentOut   *bufio.Reader
-	agentIn    io.Writer
-	agentInCloser  io.Closer
-	agentOutR      io.Reader
+	t               *testing.T
+	srv             *mcptoy.Server
+	ex              *fault.Executor
+	agentOut        *bufio.Reader
+	agentIn         io.Writer
+	agentInCloser   io.Closer
+	agentOutR       io.Reader
 	agentOutRCloser io.Closer
 	upInR           io.Reader
 	upInRCloser     io.Closer
@@ -93,24 +93,24 @@ func newProxyHarness(t *testing.T, s *scenario.Scenario) *proxyHarness {
 	}()
 
 	return &proxyHarness{
-		t:              t,
-		srv:            srv,
-		ex:             ex,
-		agentOut:       bufio.NewReader(agentOutR),
-		agentIn:        agentInW,
-		agentInCloser:  agentInW,
-		agentOutR:      agentOutR,
+		t:               t,
+		srv:             srv,
+		ex:              ex,
+		agentOut:        bufio.NewReader(agentOutR),
+		agentIn:         agentInW,
+		agentInCloser:   agentInW,
+		agentOutR:       agentOutR,
 		agentOutRCloser: agentOutR,
-		upInR:          upInR,
-		upInRCloser:    upInR,
-		upOutW:         upOutW,
-		upOutWCloser:   upOutW,
-		upInW:          upInW,
-		upInWCloser:    upInW,
-		upOutR:         upOutR,
-		upOutRCloser:   upOutR,
-		doneCh:         doneCh,
-		cancel:         cancel,
+		upInR:           upInR,
+		upInRCloser:     upInR,
+		upOutW:          upOutW,
+		upOutWCloser:    upOutW,
+		upInW:           upInW,
+		upInWCloser:     upInW,
+		upOutR:          upOutR,
+		upOutRCloser:    upOutR,
+		doneCh:          doneCh,
+		cancel:          cancel,
 	}
 }
 

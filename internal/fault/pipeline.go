@@ -35,11 +35,11 @@ const (
 // Entry is one record in the match log: a fault rule matched at a specific
 // point in the message flow.
 type Entry struct {
-	FaultIndex  int            // index into scenario.Faults
-	Fault       scenario.Fault // the fault rule that matched
-	Message     scenario.Message
-	Direction   Direction
-	Anchor      Anchor
+	FaultIndex int            // index into scenario.Faults
+	Fault      scenario.Fault // the fault rule that matched
+	Message    scenario.Message
+	Direction  Direction
+	Anchor     Anchor
 }
 
 // String renders a match log entry in a compact, deterministic format.

@@ -30,10 +30,10 @@ type Options struct {
 
 // Result holds the shrunk scenario and statistics.
 type Result struct {
-	Scenario    *scenario.Scenario
-	Iterations  int
-	OriginalN   int
-	FinalN      int
+	Scenario   *scenario.Scenario
+	Iterations int
+	OriginalN  int
+	FinalN     int
 }
 
 // Shrink searches for a minimal subset of faults from the original scenario

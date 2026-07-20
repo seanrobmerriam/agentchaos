@@ -59,24 +59,24 @@ func runSequence(s *scenario.Scenario) []fault.ScheduleEntry {
 	// making the chance of two different seeds producing identical
 	// schedules ~ (0.5)^20 ≈ 1-in-a-million.
 	var messages []struct {
-		msg  scenario.Message
-		raw  []byte
-		dir  fault.Direction
+		msg scenario.Message
+		raw []byte
+		dir fault.Direction
 	}
 	for i := int64(1); i <= 20; i++ {
 		messages = append(messages, struct {
-			msg  scenario.Message
-			raw  []byte
-			dir  fault.Direction
+			msg scenario.Message
+			raw []byte
+			dir fault.Direction
 		}{
 			scenario.Message{Kind: "request", Method: "tools/call", Tool: "counter", ID: i},
 			[]byte(`{"jsonrpc":"2.0","id":` + itoa(int(i)) + `,"method":"tools/call","params":{"name":"counter"}}`),
 			fault.AgentToUpstream,
 		})
 		messages = append(messages, struct {
-			msg  scenario.Message
-			raw  []byte
-			dir  fault.Direction
+			msg scenario.Message
+			raw []byte
+			dir fault.Direction
 		}{
 			scenario.Message{Kind: "response", ID: i},
 			[]byte(`{"jsonrpc":"2.0","id":` + itoa(int(i)) + `,"result":{"counter":` + itoa(int(i)) + `}}`),

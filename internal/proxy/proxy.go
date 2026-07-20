@@ -3,8 +3,8 @@
 // (upstream). Transport adapters build the four io ends that the Proxy
 // shuttles bytes between:
 //
-//   forward:  agentIn    -> upstreamOut   (agent -> upstream)
-//   reverse:  upstreamIn -> agentOut     (upstream -> agent)
+//	forward:  agentIn    -> upstreamOut   (agent -> upstream)
+//	reverse:  upstreamIn -> agentOut     (upstream -> agent)
 //
 // In v1 the agent side is always stdio and the upstream side is either stdio
 // (spawned child process) or Streamable HTTP.

@@ -670,11 +670,11 @@ func writeFile(t *testing.T, path string, data []byte) {
 // interactiveProxy is a subprocess wrapper that writes lines to the proxy's
 // stdin and reads lines from its stdout, with timing control.
 type interactiveProxy struct {
-	cmd      *exec.Cmd
-	stdin    io.WriteCloser
-	stdout   *bufio.Reader
-	stderr   *bytesBuffer
-	binPath  string
+	cmd     *exec.Cmd
+	stdin   io.WriteCloser
+	stdout  *bufio.Reader
+	stderr  *bytesBuffer
+	binPath string
 }
 
 func startInteractiveProxy(t *testing.T, scenarioFile, upstreamCmd string) *interactiveProxy {

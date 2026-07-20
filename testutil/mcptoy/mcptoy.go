@@ -29,7 +29,7 @@ type Request struct {
 
 // ToolCallParams is the params shape of a MCP tools/call request.
 type ToolCallParams struct {
-	Name      string          `json:"name"`
+	Name      string         `json:"name"`
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 

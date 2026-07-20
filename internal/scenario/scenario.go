@@ -30,11 +30,11 @@ type Scenario struct {
 // Fault is one fault rule in the scenario.
 type Fault struct {
 	Match       Matcher  `yaml:"match"`
-	At          string   `yaml:"at,omitempty"`           // temporal anchor (§4.3)
+	At          string   `yaml:"at,omitempty"`          // temporal anchor (§4.3)
 	Action      string   `yaml:"action"`                // action name (§4.4)
 	Probability *float64 `yaml:"probability,omitempty"` // 0..1; default 1.0
 	Count       int      `yaml:"count,omitempty"`       // for duplicate
-	Window      int      `yaml:"window,omitempty"`       // for reorder
+	Window      int      `yaml:"window,omitempty"`      // for reorder
 	Path        string   `yaml:"path,omitempty"`        // for corrupt_checkpoint
 	Offset      int64    `yaml:"offset,omitempty"`      // for corrupt_checkpoint
 	Bytes       int      `yaml:"bytes,omitempty"`       // for corrupt_checkpoint
@@ -42,10 +42,10 @@ type Fault struct {
 
 // Assertion is one assertion rule evaluated against the event log.
 type Assertion struct {
-	Type         string `yaml:"type"`
-	Key          string `yaml:"key,omitempty"`
-	WithinRetries int   `yaml:"within_retries,omitempty"`
-	Tool         string `yaml:"tool,omitempty"` // for custom verifier
+	Type          string `yaml:"type"`
+	Key           string `yaml:"key,omitempty"`
+	WithinRetries int    `yaml:"within_retries,omitempty"`
+	Tool          string `yaml:"tool,omitempty"` // for custom verifier
 }
 
 // ---------------------------------------------------------------------------
