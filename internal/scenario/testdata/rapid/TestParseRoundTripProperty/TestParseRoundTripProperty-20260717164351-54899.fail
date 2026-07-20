@@ -1,0 +1,19 @@
+# 2026/07/17 16:43:51.002242 [TestParseRoundTripProperty] [rapid] draw seed: 0
+# 2026/07/17 16:43:51.002249 [TestParseRoundTripProperty] [rapid] draw has_tool: false
+# 2026/07/17 16:43:51.002252 [TestParseRoundTripProperty] [rapid] draw has_method: false
+# 2026/07/17 16:43:51.002253 [TestParseRoundTripProperty] [rapid] draw has_type: false
+# 2026/07/17 16:43:51.002254 [TestParseRoundTripProperty] [rapid] draw has_id: true
+# 2026/07/17 16:43:51.002256 [TestParseRoundTripProperty] [rapid] draw id: 0
+# 2026/07/17 16:43:51.002326 [TestParseRoundTripProperty] id: want 0 got 0
+# 
+v0.4.8#13228984124952787745
+0x0
+0x0
+0x0
+0x0
+0x0
+0x0
+0x1
+0x0
+0x0
+0x0
