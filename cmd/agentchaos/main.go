@@ -130,7 +130,10 @@ type runResult struct {
 // assertions. Returns whether assertions passed and additional context.
 func runWithAssertions(s *scenario.Scenario, upstreamCmd string) runResult {
 	// Run the proxy and collect events.
-	ex, err := fault.NewExecutorForTransport(s, fault.ExitProcess, fault.TransportStdio)
+	// Signal-only exit callback: kill_process only flips the boolean
+	// returned by ProcessForward; the pump then sets exitCode=77 on the
+	// runResult. No os.Exit is ever fired from inside a goroutine.
+	ex, err := fault.NewExecutorForTransport(s, func(int) {}, fault.TransportStdio)
 	if err != nil {
 		return runResult{passed: false, exitCode: 78, reason: fmt.Sprintf("executor: %v", err)}
 	}
@@ -273,7 +276,10 @@ func cmdInspect(args []string) {
 // code.
 func runOnce(s *scenario.Scenario, upstreamCmd string) int {
 	// Build the executor.
-	ex, err := fault.NewExecutorForTransport(s, fault.ExitProcess, fault.TransportStdio)
+	// Signal-only exit callback: kill_process only flips the boolean
+	// returned by ProcessForward; the pump then sets exitCode=77 on the
+	// returned exit code. No os.Exit is ever fired from inside a goroutine.
+	ex, err := fault.NewExecutorForTransport(s, func(int) {}, fault.TransportStdio)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "executor error: %v\n", err)
 		return 78

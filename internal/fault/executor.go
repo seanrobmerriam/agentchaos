@@ -118,8 +118,14 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 		case "kill_process":
 			// Forward the request, then kill.
 			forward = append(forward, raw)
-			// Call the exit function (defaults to os.Exit; tests inject a
-			// recording function). The return signals kill to the caller.
+			// Signal-only: invoke exitFn(77) for callers that observe
+			// the kill via the injected hook (e.g. the unit test that
+			// records the code, or the CLI which composes a no-op).
+			// The package default ExitProcess is itself a no-op, so this
+			// never terminates the process. kill=true propagates to the
+			// pump which sets exitCode=77 on the runResult and returns;
+			// the goroutine unwinds normally so subprocess cleanup,
+			// assertion evaluation, and shrink feedback can run.
 			if ex.exitFn != nil {
 				ex.exitFn(77)
 			}
@@ -426,8 +432,13 @@ func permute(prng *splitMix64, items [][]byte) [][]byte {
 	return out
 }
 
-// ExitProcess is the default exit function.
-var ExitProcess ExitFunc = func(code int) { os.Exit(code) }
+// ExitProcess is the package default exit function. It is a no-op so
+// that test binaries and embedding callers that pass fault.ExitProcess to
+// NewExecutor/NewExecutorForTransport can compile and run without
+// terminating the process from inside a goroutine. Production callers
+// (the agentchaos CLI) compose their own signal-only exit callback and
+// let pumpWithFaults translate kill=true into the runResult.exitCode.
+var ExitProcess ExitFunc = func(code int) { _ = code }
 
 // recordForwardEvent logs a request or notification being sent forward.
 func (ex *Executor) recordForwardEvent(msg scenario.Message, dir Direction) {
