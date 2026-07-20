@@ -11,3 +11,6 @@ testdata/rapid/
 # OS
 .DS_Store
 Thumbs.db
+
+ISSUES.md
+SUGGESTED_FIXES.md
