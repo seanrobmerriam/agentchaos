@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 func main() {
@@ -105,4 +108,110 @@ func cmdRun(args []string) {
 	// All seeds passed.
 	fmt.Fprintf(os.Stderr, "[run] all %d seeds passed\n", *seeds)
 	os.Exit(0)
+}
+
+// runResult captures the outcome of a single scenario run.
+type runResult struct {
+	passed   bool
+	exitCode int
+	reason   string
+}
+
+// runWithAssertions runs the scenario, collects the event log, and checks
+// assertions. Returns whether assertions passed and additional context.
+func runWithAssertions(s *scenario.Scenario, upstreamCmd string) runResult {
+	// Run the proxy and collect events.
+	ex, err := fault.NewExecutorForTransport(s, fault.ExitProcess, fault.TransportStdio)
+	if err != nil {
+		return runResult{passed: false, exitCode: 78, reason: fmt.Sprintf("executor: %v", err)}
+	}
+
+	parts := strings.Fields(upstreamCmd)
+	if len(parts) == 0 {
+		return runResult{passed: false, exitCode: 1, reason: "no upstream command"}
+	}
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Stderr = os.Stderr
+	upIn, err := cmd.StdinPipe()
+	if err != nil {
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdin: %v", err)}
+	}
+	upOut, err := cmd.StdoutPipe()
+	if err != nil {
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("stdout: %v", err)}
+	}
+	if err := cmd.Start(); err != nil {
+		return runResult{passed: false, exitCode: 1, reason: fmt.Sprintf("start: %v", err)}
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Run the pump in a goroutine with a timeout.
+	doneCh := make(chan int, 1)
+	go func() {
+		code := pumpWithFaults(ctx, os.Stdin, os.Stdout, upOut, upIn, upIn, ex)
+		doneCh <- code
+	}()
+
+	// Wait for pump to finish or timeout.
+	pumpDone := false
+	select {
+	case code := <-doneCh:
+		_ = code
+		pumpDone = true
+	case <-ctx.Done():
+	}
+
+	if !pumpDone {
+		cancel()
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+		<-doneCh
+	}
+
+	// Check assertions against the event log.
+	if len(s.Assertions) > 0 {
+		results := assert.CheckAll(s.Assertions, ex.EventLog())
+		if assert.AnyFailed(results) {
+			var reasons []string
+			for i, r := range results {
+				if r.Failed {
+					reasons = append(reasons, fmt.Sprintf("%s: %s", s.Assertions[i].Type, r.Reason))
+				}
+			}
+			return runResult{
+				passed:   false,
+				exitCode: 70, // SPEC §8: assertion failure
+				reason:   strings.Join(reasons, "; "),
+			}
+		}
+	}
+
+	return runResult{passed: true, exitCode: 0}
+}
+
+func cmdReplay(args []string) {
+	fs := flag.NewFlagSet("replay", flag.ExitOnError)
+	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
+	upstreamCmd := fs.String("upstream", "", "upstream command")
+	seed := fs.Int64("seed", 0, "seed to replay")
+	fs.Parse(args)
+
+	if *scenarioPath == "" {
+		fmt.Fprintln(os.Stderr, "replay: --scenario is required")
+		os.Exit(1)
+	}
+
+	s, err := scenario.Parse(readFile(*scenarioPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "scenario error: %v\n", err)
+		os.Exit(78)
+	}
+	s.Seed = *seed
+	os.Exit(runOnce(s, *upstreamCmd))
 }
