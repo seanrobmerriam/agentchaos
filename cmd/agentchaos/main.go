@@ -215,3 +215,104 @@ func cmdReplay(args []string) {
 	s.Seed = *seed
 	os.Exit(runOnce(s, *upstreamCmd))
 }
+
+func cmdValidate(args []string) {
+	fs := flag.NewFlagSet("validate", flag.ExitOnError)
+	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
+	fs.Parse(args)
+
+	if *scenarioPath == "" {
+		fmt.Fprintln(os.Stderr, "validate: --scenario is required")
+		os.Exit(1)
+	}
+
+	_, err := scenario.Parse(readFile(*scenarioPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "invalid: %v\n", err)
+		os.Exit(78)
+	}
+	fmt.Println("valid")
+}
+
+func cmdInspect(args []string) {
+	fs := flag.NewFlagSet("inspect", flag.ExitOnError)
+	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
+	fs.Parse(args)
+
+	if *scenarioPath == "" {
+		fmt.Fprintln(os.Stderr, "inspect: --scenario is required")
+		os.Exit(1)
+	}
+
+	s, err := scenario.Parse(readFile(*scenarioPath))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(78)
+	}
+
+	fmt.Printf("seed: %d\n", s.Seed)
+	for i, f := range s.Faults {
+		fmt.Printf("fault[%d]: %s %s\n", i, f.Match, f.Action)
+	}
+	for i, a := range s.Assertions {
+		fmt.Printf("assertion[%d]: %s\n", i, a.Type)
+	}
+}
+
+// runOnce starts the proxy with a scenario, piping agent-side stdin/stdout
+// through the fault executor to the upstream subprocess. Returns the exit
+// code.
+func runOnce(s *scenario.Scenario, upstreamCmd string) int {
+	// Build the executor.
+	ex, err := fault.NewExecutorForTransport(s, fault.ExitProcess, fault.TransportStdio)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "executor error: %v\n", err)
+		return 78
+	}
+
+	// Start the upstream subprocess.
+	parts := strings.Fields(upstreamCmd)
+	if len(parts) == 0 {
+		fmt.Fprintln(os.Stderr, "no upstream command specified")
+		return 1
+	}
+	cmd := exec.Command(parts[0], parts[1:]...)
+	cmd.Stderr = os.Stderr
+
+	upIn, err := cmd.StdinPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "upstream stdin pipe: %v\n", err)
+		return 1
+	}
+	upOut, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "upstream stdout pipe: %v\n", err)
+		return 1
+	}
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "upstream start: %v\n", err)
+		return 1
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+
+	// Wire the proxy: agent stdin/stdout <-> upstream stdin/stdout.
+	// We intercept at the message level using the fault executor.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan int, 1)
+	go func() {
+		code := pumpWithFaults(ctx, os.Stdin, os.Stdout, upOut, upIn, upIn, ex)
+		done <- code
+	}()
+
+	select {
+	case code := <-done:
+		return code
+	case <-ctx.Done():
+		return 1
+	}
+}
