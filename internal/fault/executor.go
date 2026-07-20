@@ -151,9 +151,21 @@ func (ex *Executor) processForwardLocked(msg scenario.Message, raw []byte, dir D
 
 		case "corrupt_checkpoint":
 			// Flip bytes in the target file at the specified offset.
-			// Errors are non-fatal (the file might not exist yet).
+			// Errors are non-fatal (the file might not exist yet). When the
+			// read was shorter than requested (file shorter than offset+n),
+			// record a fault_fired event so callers/oracles can observe it.
 			if f.Path != "" && f.Bytes > 0 {
-				_ = corruptFile(f.Path, f.Offset, f.Bytes)
+				if res := corruptFile(f.Path, f.Offset, f.Bytes); res.Short {
+					ex.eventLog.Record(event.Event{
+						Kind:       event.KindFaultFired,
+						Action:     f.Action,
+						FaultIndex: i,
+						MsgID:      msg.ID,
+						Method:     msg.Method,
+						Tool:       msg.Tool,
+						Direction:  string(dir),
+					})
+				}
 			}
 			forward = append(forward, raw)
 
@@ -486,27 +498,54 @@ func (ex *Executor) recordReverseDelivered(msg scenario.Message, dir Direction, 
 	}
 }
 
-// corruptFile flips N bytes at the given offset in the file at path.
-// Uses XOR with 0xFF to flip each byte, which is a simple corruption that
-// changes the value without zeroing it. Errors are returned but the caller
-// (the executor) treats them as non-fatal — the file might not exist.
-func corruptFile(path string, offset int64, n int) error {
+// corruptResult reports the outcome of a corruptFile call. Short is true
+// when ReadAt returned fewer bytes than Requested; in that case Corrupted
+// reports only the bytes actually flipped and Error stays nil unless the
+// underlying I/O itself failed.
+type corruptResult struct {
+	Requested int
+	Corrupted int
+	Short     bool
+	Error     error
+}
+
+// corruptFile flips up to n bytes at the given offset in the file at path
+// using XOR with 0xFF, which is a simple corruption that changes every byte
+// without zeroing it. Partial reads from ReadAt are tolerated: the bytes
+// that were actually read are corrupted, the result reports Short=true,
+// and the executor records a fault_fired event for visibility.
+func corruptFile(path string, offset int64, n int) corruptResult {
+	res := corruptResult{Requested: n}
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
-		return err
+		res.Error = err
+		return res
 	}
 	defer f.Close()
 
 	buf := make([]byte, n)
-	_, err = f.ReadAt(buf, offset)
-	if err != nil {
-		return err
+	rn, rerr := f.ReadAt(buf, offset)
+	res.Corrupted = rn
+	if rn < n {
+		res.Short = true
 	}
-
-	for i := range buf {
-		buf[i] ^= 0xFF // flip all bits
+	if rn > 0 {
+		for i := 0; i < rn; i++ {
+			buf[i] ^= 0xFF
+		}
+		if _, werr := f.WriteAt(buf[:rn], offset); werr != nil && res.Error == nil {
+			res.Error = werr
+		}
 	}
+	if rerr != nil && res.Error == nil && rn == n {
+		// Full read but transport signalled an error (rare); surface it.
+		res.Error = rerr
+	}
+	return res
+}
 
-	_, err = f.WriteAt(buf, offset)
-	return err
+// CorruptFileForTest is a test-only export that wraps corruptFile so tests
+// outside the fault package can drive the short-read behaviour directly.
+func CorruptFileForTest(path string, offset int64, n int) corruptResult {
+	return corruptFile(path, offset, n)
 }
