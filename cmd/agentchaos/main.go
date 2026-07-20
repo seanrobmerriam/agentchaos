@@ -123,19 +123,31 @@ func cmdRun(args []string) {
 }
 
 // runResult captures the outcome of a single scenario run.
+//
+// exitCode is the public exit code: 0 on success, 70 on assertion
+// failure, 75 on timeout, 78 on executor/parse error. pumpCode is the
+// raw code reported by the pump (77 for kill_process, 0 for normal
+// exit) and is surfaced by runOnce but masked to 0 by runWithAssertions
+// per the C2 contract.
 type runResult struct {
 	passed   bool
 	exitCode int
+	pumpCode int
 	reason   string
 }
 
-// runWithAssertions runs the scenario, collects the event log, and checks
-// assertions. Returns whether assertions passed and additional context.
-func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) runResult {
-	// Run the proxy and collect events.
+// runScenario builds the fault executor, launches the upstream subprocess,
+// pumps agent I/O through the executor, and checks scenario assertions on
+// completion. It is the shared body of runWithAssertions and runOnce.
+//
+// Returns the captured exit code (0 on clean pump completion, 70 on
+// assertion failure, 75 on timeout, 78 on executor/parse error, 77 if
+// the pump was killed via kill_process). The passed flag is true only
+// when the pump returned 0 AND no assertions failed.
+func runScenario(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) runResult {
 	// Signal-only exit callback: kill_process only flips the boolean
-	// returned by ProcessForward; the pump then sets exitCode=77 on the
-	// runResult. No os.Exit is ever fired from inside a goroutine.
+	// returned by ProcessForward; the pump then sets pumpCode=77. No
+	// os.Exit is ever fired from inside a goroutine.
 	ex, err := fault.NewExecutorForTransport(s, func(int) {}, fault.TransportStdio)
 	if err != nil {
 		return runResult{passed: false, exitCode: 78, reason: fmt.Sprintf("executor: %v", err)}
@@ -173,11 +185,10 @@ func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Du
 		doneCh <- code
 	}()
 
-	// Wait for pump to finish or timeout.
 	pumpDone := false
+	var pumpCode int
 	select {
-	case code := <-doneCh:
-		_ = code
+	case pumpCode = <-doneCh:
 		pumpDone = true
 	case <-ctx.Done():
 	}
@@ -186,11 +197,11 @@ func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Du
 		cancel()
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
-		<-doneCh
+		pumpCode = <-doneCh
 	}
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return runResult{passed: false, exitCode: 75, reason: "timeout"}
+		return runResult{passed: false, exitCode: 75, pumpCode: pumpCode, reason: "timeout"}
 	}
 
 	// Check assertions against the event log.
@@ -206,12 +217,22 @@ func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Du
 			return runResult{
 				passed:   false,
 				exitCode: 70, // SPEC §8: assertion failure
+				pumpCode: pumpCode,
 				reason:   strings.Join(reasons, "; "),
 			}
 		}
 	}
 
-	return runResult{passed: true, exitCode: 0}
+	// Success: mask the raw pump code (e.g. 77 from kill_process) to 0
+	// per the C2 contract — kill_process signals the run rather than
+	// failing it. runOnce exposes the raw code separately.
+	return runResult{passed: pumpCode == 0, exitCode: 0, pumpCode: pumpCode}
+}
+
+// runWithAssertions delegates to runScenario, preserving the runResult
+// return type used by the shrink predicate (C2 fix).
+func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) runResult {
+	return runScenario(s, upstreamCmd, timeout)
 }
 
 func cmdReplay(args []string) {
@@ -279,71 +300,14 @@ func cmdInspect(args []string) {
 	}
 }
 
-// runOnce starts the proxy with a scenario, piping agent-side stdin/stdout
-// through the fault executor to the upstream subprocess. Returns the exit
-// code.
+// runOnce delegates to runScenario and surfaces the raw pump code
+// (77 for kill_process). On timeout it returns 75.
 func runOnce(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) int {
-	// Build the executor.
-	// Signal-only exit callback: kill_process only flips the boolean
-	// returned by ProcessForward; the pump then sets exitCode=77 on the
-	// returned exit code. No os.Exit is ever fired from inside a goroutine.
-	ex, err := fault.NewExecutorForTransport(s, func(int) {}, fault.TransportStdio)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "executor error: %v\n", err)
-		return 78
+	res := runScenario(s, upstreamCmd, timeout)
+	if res.exitCode == 75 {
+		return 75
 	}
-
-	// Start the upstream subprocess.
-	parts := strings.Fields(upstreamCmd)
-	if len(parts) == 0 {
-		fmt.Fprintln(os.Stderr, "no upstream command specified")
-		return 1
-	}
-	cmd := exec.Command(parts[0], parts[1:]...)
-	cmd.Stderr = os.Stderr
-
-	upIn, err := cmd.StdinPipe()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "upstream stdin pipe: %v\n", err)
-		return 1
-	}
-	upOut, err := cmd.StdoutPipe()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "upstream stdout pipe: %v\n", err)
-		return 1
-	}
-	if err := cmd.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "upstream start: %v\n", err)
-		return 1
-	}
-	defer func() {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-	}()
-
-	// Wire the proxy: agent stdin/stdout <-> upstream stdin/stdout.
-	// We intercept at the message level using the fault executor.
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-
-	done := make(chan int, 1)
-	go func() {
-		code := pumpWithFaults(ctx, os.Stdin, os.Stdout, upOut, upIn, upIn, ex)
-		done <- code
-	}()
-
-	select {
-	case code := <-done:
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return 75
-		}
-		return code
-	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return 75
-		}
-		return 1
-	}
+	return res.pumpCode
 }
 
 // pumpWithFaults is the v1 message-level fault-injecting pump. It reads
