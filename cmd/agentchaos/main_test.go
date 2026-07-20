@@ -120,6 +120,40 @@ func TestRunInvalidScenarioExits78(t *testing.T) {
 	}
 }
 
+func TestInspectDryRun(t *testing.T) {
+	bin := buildCLI(t)
+	dir := t.TempDir()
+	scenario := filepath.Join(dir, "s.yaml")
+	mustWrite(t, scenario, "seed: 1\nfaults:\n  - {action: duplicate, match: {tool: t}, count: 2}\n")
+	msgs := filepath.Join(dir, "msgs.jsonl")
+	mustWrite(t, msgs, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"t"}}
+`)
+	out, code, err := runCLI(t, bin, "inspect", "--scenario", scenario, "--dry-run", "--messages", msgs)
+	if err != nil {
+		t.Fatalf("inspect --dry-run: unexpected error: %v\n%s", err, out)
+	}
+	if code != 0 {
+		t.Fatalf("inspect --dry-run: exit %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "duplicate") {
+		t.Fatalf("inspect --dry-run: expected schedule line mentioning 'duplicate':\n%s", out)
+	}
+	if !strings.Contains(out, "forward=1") {
+		t.Fatalf("inspect --dry-run: expected forward=1 counter:\n%s", out)
+	}
+}
+
+func TestInspectDryRunRequiresMessages(t *testing.T) {
+	bin := buildCLI(t)
+	dir := t.TempDir()
+	scenario := filepath.Join(dir, "s.yaml")
+	mustWrite(t, scenario, "seed: 1\nfaults: []\n")
+	_, code, _ := runCLI(t, bin, "inspect", "--scenario", scenario, "--dry-run")
+	if code == 0 {
+		t.Fatalf("inspect --dry-run without --messages: expected non-zero exit, got 0")
+	}
+}
+
 func TestInspectOutputs(t *testing.T) {
 	bin := buildCLI(t)
 	out, code, err := runCLI(t, bin, "inspect", "--scenario", exampleScenario(t))

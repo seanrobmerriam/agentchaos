@@ -304,61 +304,6 @@ func cmdLint(args []string) {
 	}
 }
 
-func cmdInspect(args []string) {
-	fs := flag.NewFlagSet("inspect", flag.ExitOnError)
-	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
-	fs.Parse(args)
-
-	if *scenarioPath == "" {
-		fmt.Fprintln(os.Stderr, "inspect: --scenario is required")
-		os.Exit(1)
-	}
-
-	s, err := scenario.Parse(readFile(*scenarioPath))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(78)
-	}
-
-	fmt.Printf("seed: %d\n\n", s.Seed)
-	for i, f := range s.Faults {
-		fmt.Printf("fault[%d]\n", i)
-		fmt.Printf("  match:  %s\n", f.Match.String())
-		if f.At != "" {
-			fmt.Printf("  at:     %s\n", f.At)
-		}
-		fmt.Printf("  action: %s\n", f.Action)
-		if f.Probability != nil {
-			fmt.Printf("  probability: %g\n", *f.Probability)
-		}
-		if f.Action == "duplicate" {
-			fmt.Printf("  count:   %d\n", f.Count)
-		}
-		if f.Action == "reorder" {
-			fmt.Printf("  window:  %d\n", f.Window)
-		}
-		if f.Action == "corrupt_checkpoint" {
-			fmt.Printf("  path:    %s\n", f.Path)
-			fmt.Printf("  offset:  %d\n", f.Offset)
-			fmt.Printf("  bytes:   %d\n", f.Bytes)
-		}
-		fmt.Println()
-	}
-	for i, a := range s.Assertions {
-		fmt.Printf("assertion[%d] type=%s", i, a.Type)
-		if a.Key != "" {
-			fmt.Printf(" key=%s", a.Key)
-		}
-		if a.WithinRetries > 0 {
-			fmt.Printf(" within_retries=%d", a.WithinRetries)
-		}
-		if a.Tool != "" {
-			fmt.Printf(" tool=%s", a.Tool)
-		}
-		fmt.Println()
-	}
-}
-
 // runOnce delegates to runScenario and surfaces the raw pump code
 // (77 for kill_process). On timeout it returns 75.
 func runOnce(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) int {
