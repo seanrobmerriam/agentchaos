@@ -94,7 +94,15 @@ func NewExecutorForTransport(s *scenario.Scenario, exitFn ExitFunc, transport Tr
 
 // ProcessForward handles a message going agent->upstream.
 // Returns: messages to forward to upstream, and whether to kill the process.
+//
+// Lock-held: ex.mu is held for the entire body. All PRNG consumption,
+// schedule mutation, and pendingInDoubt updates must happen under this
+// mutex so that two pump goroutines (forward + reverse) running
+// concurrently produce a byte-identical fault schedule for a given seed.
 func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+
 	anchor := ex.deriveForwardAnchor(msg, dir)
 
 	// Record the request/notification in the event log.
@@ -102,7 +110,7 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 
 	for i := range ex.scenario.Faults {
 		f := &ex.scenario.Faults[i]
-		if !ex.shouldFire(i, f, msg, dir, anchor) {
+		if !ex.shouldFireLocked(i, f, msg, dir, anchor) {
 			continue
 		}
 
@@ -119,9 +127,7 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 
 		case "in_doubt":
 			// Mark this request id for response dropping.
-			ex.mu.Lock()
 			ex.pendingInDoubt[msg.ID] = true
-			ex.mu.Unlock()
 			// Forward the request normally.
 			forward = append(forward, raw)
 
@@ -159,18 +165,22 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 // ProcessReverse handles a message going upstream->agent.
 // Returns: messages to forward to the agent (may be buffered, dropped, or
 // duplicated), and whether to kill the process.
+//
+// Lock-held: ex.mu is held for the entire body. The pendingInDoubt check,
+// droppedResponses append, eventLog.Record, schedule mutation, and PRNG
+// consumption all happen under this single lock acquisition so that the
+// in_doubt early-exit path and the schedule remain consistent across
+// concurrent forward/reverse pump goroutines.
 func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
+	ex.mu.Lock()
+	defer ex.mu.Unlock()
+
 	anchor := ex.deriveReverseAnchor(msg, dir)
 
 	// Check in_doubt FIRST: if this response's id is pending, drop it.
-	ex.mu.Lock()
 	if msg.Kind == "response" && ex.pendingInDoubt[msg.ID] {
 		delete(ex.pendingInDoubt, msg.ID)
-		ex.mu.Unlock()
-		// Record the dropped response for the oracle.
-		ex.mu.Lock()
 		ex.droppedResponses = append(ex.droppedResponses, raw)
-		ex.mu.Unlock()
 		// Record event: response was dropped (oracle sees it, agent doesn't).
 		ex.eventLog.Record(event.Event{
 			Kind:      event.KindResponseDropped,
@@ -180,11 +190,10 @@ func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Directi
 		})
 		return nil, false // dropped
 	}
-	ex.mu.Unlock()
 
 	for i := range ex.scenario.Faults {
 		f := &ex.scenario.Faults[i]
-		if !ex.shouldFire(i, f, msg, dir, anchor) {
+		if !ex.shouldFireLocked(i, f, msg, dir, anchor) {
 			continue
 		}
 
@@ -199,11 +208,26 @@ func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Directi
 			return out, false
 
 		case "reorder":
-			fwd, killed := ex.handleReorder(f, raw)
-			if len(fwd) > 0 {
-				ex.recordReverseDelivered(msg, dir, len(fwd))
+			// handleReorder is inlined here because it also acquires
+			// ex.mu and sync.Mutex is not reentrant. The lock is already
+			// held by the deferred Lock above.
+			window := f.Window
+			if window <= 0 {
+				window = 3
 			}
-			return fwd, killed
+			ex.reorderBuffer = append(ex.reorderBuffer, raw)
+			ex.reorderWindow = window
+
+			if len(ex.reorderBuffer) >= ex.reorderWindow {
+				buf := ex.reorderBuffer
+				ex.reorderBuffer = nil
+				fwd := permute(ex.prng, buf)
+				if len(fwd) > 0 {
+					ex.recordReverseDelivered(msg, dir, len(fwd))
+				}
+				return fwd, false
+			}
+			return nil, false // buffered, not yet released
 
 		case "in_doubt", "kill_process":
 			// These fire on the forward side; on reverse they're no-ops.
@@ -256,10 +280,16 @@ func (ex *Executor) EventLog() *event.Log {
 	return ex.eventLog
 }
 
-// shouldFire checks if a fault should fire for a given message+direction+anchor,
-// including the probability roll. The faultIndex is recorded in the schedule
-// when the fault fires.
-func (ex *Executor) shouldFire(faultIndex int, f *scenario.Fault, msg scenario.Message, dir Direction, anchor Anchor) bool {
+// shouldFireLocked checks if a fault should fire for a given
+// message+direction+anchor, including the probability roll. The
+// faultIndex is recorded in the schedule when the fault fires.
+//
+// Lock-held: callers MUST hold ex.mu for the duration of this call.
+// All PRNG consumption (ex.prng.Float64) and schedule mutation
+// (ex.schedule = append(...)) happen inside this method, so the mutex
+// must be held to serialize them. ProcessForward and ProcessReverse
+// acquire the mutex at entry and call shouldFireLocked under it.
+func (ex *Executor) shouldFireLocked(faultIndex int, f *scenario.Fault, msg scenario.Message, dir Direction, anchor Anchor) bool {
 	if !f.Match.Matches(msg) {
 		return false
 	}
