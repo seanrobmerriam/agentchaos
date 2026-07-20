@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 )
 
 func main() {
@@ -315,4 +318,95 @@ func runOnce(s *scenario.Scenario, upstreamCmd string) int {
 	case <-ctx.Done():
 		return 1
 	}
+}
+
+// pumpWithFaults is the v1 message-level fault-injecting pump. It reads
+// newline-delimited JSON from agentIn, parses each line into a Message,
+// runs it through the executor, forwards the result(s) to upstreamOut,
+// reads responses from upstreamIn, runs them through the executor, and
+// forwards the result(s) to agentOut.
+//
+// upstreamOutCloser is the upstream's stdin pipe write end (from exec.Cmd);
+// it is closed when the forward pump finishes so the upstream server sees
+// EOF and terminates.
+func pumpWithFaults(ctx context.Context, agentIn io.Reader, agentOut io.Writer, upstreamIn io.Reader, upstreamOut io.Writer, upstreamOutCloser io.Closer, ex *fault.Executor) int {
+	fwdDone := make(chan struct{})
+	revDone := make(chan struct{})
+	var exitCode int
+	var exitOnce sync.Once
+
+	exitNow := func(code int) {
+		exitOnce.Do(func() { exitCode = code })
+	}
+
+	// Forward pump: agent -> upstream
+	go func() {
+		defer close(fwdDone)
+		sc := bufio.NewReader(agentIn)
+		for {
+			line, err := sc.ReadBytes('\n')
+			if len(line) > 0 {
+				msg := scenario.ParseMessage(line)
+				trimmed := trimTrailingNewline(line)
+				forward, killed := ex.ProcessForward(msg, trimmed, fault.AgentToUpstream)
+				for _, b := range forward {
+					if _, werr := upstreamOut.Write(append(b, '\n')); werr != nil {
+						return
+					}
+				}
+				if killed {
+					exitNow(77)
+					return
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+
+	// Reverse pump: upstream -> agent
+	go func() {
+		defer close(revDone)
+		sc := bufio.NewReader(upstreamIn)
+		for {
+			line, err := sc.ReadBytes('\n')
+			if len(line) > 0 {
+				msg := scenario.ParseMessage(line)
+				trimmed := trimTrailingNewline(line)
+				forward, _ := ex.ProcessReverse(msg, trimmed, fault.UpstreamToAgent)
+				for _, b := range forward {
+					if _, werr := agentOut.Write(append(b, '\n')); werr != nil {
+						return
+					}
+				}
+			}
+			if err != nil {
+				// Drain any buffered reorder responses.
+				drained := ex.Drain()
+				for _, b := range drained {
+					_, _ = agentOut.Write(append(b, '\n'))
+				}
+				return
+			}
+		}
+	}()
+
+	<-fwdDone
+	// Forward done: close upstream's stdin so it terminates and the
+	// reverse pump sees EOF.
+	if upstreamOutCloser != nil {
+		_ = upstreamOutCloser.Close()
+	}
+	<-revDone
+
+	// Emit the fault schedule to stderr if AGENTCHAOS_DEBUG is set.
+	if os.Getenv("AGENTCHAOS_DEBUG") != "" {
+		for _, entry := range ex.Schedule() {
+			fmt.Fprintf(os.Stderr, "[schedule] fault[%d] %s id=%d dir=%s\n",
+				entry.FaultIndex, entry.Action, entry.MsgID, entry.Direction)
+		}
+	}
+
+	return exitCode
 }
