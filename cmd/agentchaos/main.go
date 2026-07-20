@@ -360,7 +360,7 @@ func pumpWithFaults(ctx context.Context, agentIn io.Reader, agentOut io.Writer, 
 			if len(line) > 0 {
 				msg := scenario.ParseMessage(line)
 				trimmed := trimTrailingNewline(line)
-				forward, killed := ex.ProcessForward(msg, trimmed, fault.AgentToUpstream)
+				forward, killed := ex.HandleForwardMessage(msg, trimmed, fault.AgentToUpstream)
 				for _, b := range forward {
 					if _, werr := upstreamOut.Write(append(b, '\n')); werr != nil {
 						return
@@ -386,7 +386,7 @@ func pumpWithFaults(ctx context.Context, agentIn io.Reader, agentOut io.Writer, 
 			if len(line) > 0 {
 				msg := scenario.ParseMessage(line)
 				trimmed := trimTrailingNewline(line)
-				forward, _ := ex.ProcessReverse(msg, trimmed, fault.UpstreamToAgent)
+				forward, _ := ex.HandleReverseMessage(msg, trimmed, fault.UpstreamToAgent)
 				for _, b := range forward {
 					if _, werr := agentOut.Write(append(b, '\n')); werr != nil {
 						return

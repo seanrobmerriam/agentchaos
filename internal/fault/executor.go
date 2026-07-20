@@ -102,7 +102,13 @@ func NewExecutorForTransport(s *scenario.Scenario, exitFn ExitFunc, transport Tr
 func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	ex.mu.Lock()
 	defer ex.mu.Unlock()
+	return ex.processForwardLocked(msg, raw, dir)
+}
 
+// processForwardLocked contains the fault-injection logic for a forward
+// (agent->upstream) message. Caller MUST hold ex.mu; see ProcessForward
+// for the locking/scheduling invariants.
+func (ex *Executor) processForwardLocked(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	anchor := ex.deriveForwardAnchor(msg, dir)
 
 	// Record the request/notification in the event log.
@@ -180,7 +186,13 @@ func (ex *Executor) ProcessForward(msg scenario.Message, raw []byte, dir Directi
 func (ex *Executor) ProcessReverse(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	ex.mu.Lock()
 	defer ex.mu.Unlock()
+	return ex.processReverseLocked(msg, raw, dir)
+}
 
+// processReverseLocked contains the fault-injection logic for a reverse
+// (upstream->agent) message. Caller MUST hold ex.mu; see ProcessReverse
+// for the locking/scheduling invariants.
+func (ex *Executor) processReverseLocked(msg scenario.Message, raw []byte, dir Direction) (forward [][]byte, kill bool) {
 	anchor := ex.deriveReverseAnchor(msg, dir)
 
 	// Check in_doubt FIRST: if this response's id is pending, drop it.

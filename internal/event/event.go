@@ -41,6 +41,7 @@ type Event struct {
 	Direction  string // "agent_to_upstream" or "upstream_to_agent"
 	Raw        []byte // raw message bytes (for dropped/recorded messages)
 	Key        string // idempotency key or checkpoint key (for assertion events)
+	Source     string // origin of the event (e.g. "well-known-notification")
 }
 
 // Log is a thread-safe append-only event log.
