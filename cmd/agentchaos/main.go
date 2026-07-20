@@ -4,6 +4,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/seanrobmerriam/agentchaos/internal/assert"
 	"github.com/seanrobmerriam/agentchaos/internal/fault"
@@ -56,6 +58,7 @@ func cmdRun(args []string) {
 	seeds := fs.Int("seeds", 1, "number of seeds to try")
 	shrinkOnFailure := fs.Bool("shrink-on-failure", false, "shrink the fault schedule on failure")
 	reproducerPath := fs.String("reproducer", "", "path to write minimal reproducer scenario on failure")
+	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
 	fs.Parse(args)
 
 	if *scenarioPath == "" {
@@ -76,7 +79,7 @@ func cmdRun(args []string) {
 		}
 
 		// Run the scenario + assertions.
-		result := runWithAssertions(&s, *upstreamCmd)
+		result := runWithAssertions(&s, *upstreamCmd, *timeout)
 
 		if result.passed && result.exitCode == 0 {
 			continue // no failure found; try next seed
@@ -92,7 +95,7 @@ func cmdRun(args []string) {
 			res, err := shrink.Shrink(&s, func(cand *scenario.Scenario) bool {
 				// Predicate: does this reduced scenario still fail
 				// assertions with the same seed?
-				r := runWithAssertions(cand, *upstreamCmd)
+				r := runWithAssertions(cand, *upstreamCmd, *timeout)
 				return !r.passed
 			}, shrink.Options{MaxIterations: 200})
 			if err != nil {
@@ -128,7 +131,7 @@ type runResult struct {
 
 // runWithAssertions runs the scenario, collects the event log, and checks
 // assertions. Returns whether assertions passed and additional context.
-func runWithAssertions(s *scenario.Scenario, upstreamCmd string) runResult {
+func runWithAssertions(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) runResult {
 	// Run the proxy and collect events.
 	// Signal-only exit callback: kill_process only flips the boolean
 	// returned by ProcessForward; the pump then sets exitCode=77 on the
@@ -160,7 +163,7 @@ func runWithAssertions(s *scenario.Scenario, upstreamCmd string) runResult {
 		_, _ = cmd.Process.Wait()
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	// Run the pump in a goroutine with a timeout.
@@ -184,6 +187,10 @@ func runWithAssertions(s *scenario.Scenario, upstreamCmd string) runResult {
 		_ = cmd.Process.Kill()
 		_, _ = cmd.Process.Wait()
 		<-doneCh
+	}
+
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return runResult{passed: false, exitCode: 75, reason: "timeout"}
 	}
 
 	// Check assertions against the event log.
@@ -212,6 +219,7 @@ func cmdReplay(args []string) {
 	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
 	upstreamCmd := fs.String("upstream", "", "upstream command")
 	seed := fs.Int64("seed", 0, "seed to replay")
+	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
 	fs.Parse(args)
 
 	if *scenarioPath == "" {
@@ -225,7 +233,7 @@ func cmdReplay(args []string) {
 		os.Exit(78)
 	}
 	s.Seed = *seed
-	os.Exit(runOnce(s, *upstreamCmd))
+	os.Exit(runOnce(s, *upstreamCmd, *timeout))
 }
 
 func cmdValidate(args []string) {
@@ -274,7 +282,7 @@ func cmdInspect(args []string) {
 // runOnce starts the proxy with a scenario, piping agent-side stdin/stdout
 // through the fault executor to the upstream subprocess. Returns the exit
 // code.
-func runOnce(s *scenario.Scenario, upstreamCmd string) int {
+func runOnce(s *scenario.Scenario, upstreamCmd string, timeout time.Duration) int {
 	// Build the executor.
 	// Signal-only exit callback: kill_process only flips the boolean
 	// returned by ProcessForward; the pump then sets exitCode=77 on the
@@ -315,7 +323,7 @@ func runOnce(s *scenario.Scenario, upstreamCmd string) int {
 
 	// Wire the proxy: agent stdin/stdout <-> upstream stdin/stdout.
 	// We intercept at the message level using the fault executor.
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	done := make(chan int, 1)
@@ -326,8 +334,14 @@ func runOnce(s *scenario.Scenario, upstreamCmd string) int {
 
 	select {
 	case code := <-done:
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return 75
+		}
 		return code
 	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return 75
+		}
 		return 1
 	}
 }
