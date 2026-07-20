@@ -142,7 +142,9 @@ func cmdRun(args []string) {
 				fmt.Fprintf(os.Stderr, "[shrink] %d → %d faults in %d iterations\n",
 					res.OriginalN, res.FinalN, res.Iterations)
 				if *reproducerPath != "" {
-					out, _ := scenario.Marshal(res.Scenario)
+					body, _ := scenario.Marshal(res.Scenario)
+					header := fmt.Sprintf("# shrunk from seed %d via %d iterations\n---\n", failedSeed, res.Iterations)
+					out := append([]byte(header), body...)
 					if werr := os.WriteFile(*reproducerPath, out, 0644); werr != nil {
 						fmt.Fprintf(os.Stderr, "[shrink] write reproducer: %v\n", werr)
 					} else {
@@ -291,7 +293,7 @@ func cmdReplay(args []string) {
 	fs := flag.NewFlagSet("replay", flag.ExitOnError)
 	scenarioPath := fs.String("scenario", "", "path to scenario YAML")
 	upstreamCmd := fs.String("upstream", "", "upstream command")
-	seed := fs.Int64("seed", 0, "seed to replay")
+	seed := fs.Int64("seed", 0, "override the scenario's seed (0 = use the file's seed)")
 	timeout := fs.Duration("timeout", 60*time.Second, "max wall-clock duration; exit 75 on deadline")
 	fs.Parse(args)
 
@@ -305,7 +307,10 @@ func cmdReplay(args []string) {
 		fmt.Fprintf(os.Stderr, "scenario error: %v\n", err)
 		os.Exit(78)
 	}
-	s.Seed = *seed
+	// Only override the seed when the flag was explicitly provided.
+	if *seed != 0 {
+		s.Seed = *seed
+	}
 	os.Exit(runOnce(s, *upstreamCmd, *timeout))
 }
 

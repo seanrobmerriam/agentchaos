@@ -154,6 +154,18 @@ func TestInspectDryRunRequiresMessages(t *testing.T) {
 	}
 }
 
+func TestReplayReadsSeedFromFile(t *testing.T) {
+	bin := buildCLI(t)
+	dir := t.TempDir()
+	path := filepath.Join(dir, "repro.yaml")
+	// The scenario carries seed 4891; replay should use it without --seed flag.
+	mustWrite(t, path, "seed: 4891\nfaults: []\nassertions: []\n")
+	_, code, _ := runCLI(t, bin, "replay", "--scenario", path, "--upstream", "/bin/cat")
+	if code != 0 {
+		t.Fatalf("replay without --seed: expected 0, got %d", code)
+	}
+}
+
 func TestInspectOutputs(t *testing.T) {
 	bin := buildCLI(t)
 	out, code, err := runCLI(t, bin, "inspect", "--scenario", exampleScenario(t))
