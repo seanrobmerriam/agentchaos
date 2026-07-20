@@ -76,6 +76,12 @@ func (s *Server) handleMessage(b []byte, w io.Writer) {
 		return
 	}
 
+	// JSON-RPC notification: id is absent (or null). Per the spec, servers
+	// MUST NOT reply to notifications — ignore before dispatching the method.
+	if len(req.ID) == 0 {
+		return
+	}
+
 	switch req.Method {
 	case "initialize":
 		sendMarshaled(w, map[string]any{
