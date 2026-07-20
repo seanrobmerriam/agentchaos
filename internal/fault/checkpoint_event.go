@@ -99,6 +99,19 @@ func (ex *Executor) applyWellKnownNotificationLocked(raw []byte, dir Direction) 
 			Direction: string(dir),
 			Raw:       raw,
 		})
+	case "span":
+		// Span events reuse KindFaultFired with Action="span" — the span
+		// name is carried in Tool, and arbitrary attrs remain visible via
+		// Raw. No dedicated KindSpan constant exists yet (deferred).
+		ex.eventLog.Record(event.Event{
+			Kind:      event.KindFaultFired,
+			Action:    "span",
+			Tool:      p.Tool,
+			Method:    wellKnownNotificationMethod,
+			Source:    wellKnownSource,
+			Direction: string(dir),
+			Raw:       raw,
+		})
 	default:
 		// Unknown kind: drop. We do not forward unrecognised notifications
 		// on this method because they are out of schema.

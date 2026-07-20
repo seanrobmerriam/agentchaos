@@ -89,6 +89,28 @@ func TestMalformedNotificationDropsSilently(t *testing.T) {
 	}
 }
 
+func TestWellKnownSpanRecorded(t *testing.T) {
+	s := &scenario.Scenario{Seed: 6}
+	ex, err := NewExecutorForTransport(s, func(int) {}, TransportStdio)
+	if err != nil {
+		t.Fatalf("NewExecutorForTransport: %v", err)
+	}
+	raw := []byte(`{"jsonrpc":"2.0","method":"notifications/agentchaos/event","params":{"kind":"span","tool":"retry_attempt","attrs":{"n":3}}}`)
+	out, _ := ex.HandleForwardMessage(scenario.ParseMessage(raw), raw, AgentToUpstream)
+	if len(out) != 0 {
+		t.Fatalf("expected span notification to be consumed (no forwards); got %d", len(out))
+	}
+	found := false
+	for _, e := range ex.EventLog().Filter(event.KindFaultFired) {
+		if e.Action == "span" && e.Tool == "retry_attempt" && e.Source == "well-known-notification" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected KindFaultFired event with Action=span, Tool=retry_attempt, Source=well-known-notification; events=%v", ex.EventLog().Filter(event.KindFaultFired))
+	}
+}
+
 func TestNonWellKnownMethodStillProcessed(t *testing.T) {
 	// Sanity check: a notification whose method is NOT the well-known one
 	// must still flow through ProcessForward (i.e. it is forwarded normally).

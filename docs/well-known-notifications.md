@@ -5,7 +5,8 @@ The agent can emit a JSON-RPC notification with method
 event log. The proxy consumes the notification (does not forward it)
 and translates the `params.kind` into the corresponding event log
 entry. This is the only built-in path for producing
-`KindCheckpointCommit` and `KindTerminalState` events.
+`KindCheckpointCommit`, `KindTerminalState`, and user-visible
+`KindFaultFired` (action `"span"`) events.
 
 ## Schema
 
@@ -26,6 +27,15 @@ entry. This is the only built-in path for producing
 |---------------------|----------------------|------------------------------------------------|
 | `checkpoint_commit` | `KindCheckpointCommit` | `tool`, `msg_id`, `key`                       |
 | `terminal_state`    | `KindTerminalState`    | `tool`, `key`                                 |
+| `span`              | `KindFaultFired`       | `tool` (carries the span name), `attrs` (object, opaque) |
+
+### Spans (deferred dedicated Kind)
+
+`span` notifications are recorded as `KindFaultFired` with `Action="span"`
+and `Tool=<span name>`. A dedicated `KindSpan` constant is deferred;
+until it lands, custom verifiers should match on `KindFaultFired &&
+Action=="span"`. No built-in assertion reads span events — they exist
+for user-defined verification.
 
 ## Example
 
