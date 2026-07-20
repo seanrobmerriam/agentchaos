@@ -1,3 +1,5 @@
+<img src="assets/agentchaos.png" alt="agentchaos-logo" width="300" />   
+
 # AgentChaos
 
 > Transparent MCP fault-injection proxy for testing agent recovery logic.
